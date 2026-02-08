@@ -28,10 +28,4 @@ cat > lib/version.py <<EOF
 __version__ = "$VERSION"
 EOF
 
-echo "Version updated successfully to $VERSION"
-if [[ -f "$IOS_PBX" ]]; then
-  perl -0777 -pe "s/(MARKETING_VERSION\\s*=\\s*)[^;]+;/\${1}$MAJOR_MINOR_PATCH;/g; s/(CURRENT_PROJECT_VERSION\\s*=\\s*)[^;]+;/\${1}$VERSION_CODE;/g" -i "$IOS_PBX"
-  echo "Updated iOS project.pbxproj: MARKETING_VERSION=$MAJOR_MINOR_PATCH CURRENT_PROJECT_VERSION=$VERSION_CODE"
-fi
-
 echo "Version update complete."
