@@ -91,6 +91,20 @@ Then install the project dependencies:
 pip install -r requirements.txt
 ```
 
+**If SSH connection times out during installation** (common on slower Pi models), run installation in background:
+
+```bash
+nohup pip install -r requirements.txt > install.log 2>&1 &
+```
+
+Monitor the installation progress:
+
+```bash
+tail -f install.log
+```
+
+Press `Ctrl+C` to stop monitoring (installation continues in background)
+
 ### 4. Configure Google Sheets API
 
 1. Create a Google Cloud Project
@@ -404,6 +418,13 @@ If issues persist, try using the legacy resolver:
 
 ```bash
 pip install --no-cache-dir --use-deprecated=legacy-resolver -r requirements.txt
+```
+
+**If SSH connection times out during installation**, run in background:
+
+```bash
+nohup pip install -r requirements.txt > install.log 2>&1 &
+tail -f install.log
 ```
 
 ### GPIO permissions
