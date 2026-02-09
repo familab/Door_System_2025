@@ -16,7 +16,7 @@ adafruit-blinka==8.69.0
 adafruit-circuitpython-busdevice==5.2.9
 Adafruit-PlatformDetect==3.87.0
 Adafruit-PureIO==1.1.11
-pyftdi==0.55.4
+pyftdi==0.57.1
 
 # Google API dependencies
 google-auth==2.35.0
