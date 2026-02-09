@@ -24,8 +24,9 @@ DEFAULT_CONFIG = {
     # File paths
     "CSV_FILE": "google_sheet_data.csv",
     "CREDS_FILE": "creds.json",
-    "LOG_FILE": "logs/door_controller.txt",
-    "WATCHDOG_FILE": "logs/door_controller_watchdog.txt",
+    "LOG_FILE": "logs/door_controller.log",
+    # Watchdog heartbeat file (single, non-dated file). It records the last time the watchdog ran.
+    "WATCHDOG_FILE": "logs/door_controller_watchdog_heartbeat.txt",
 
     # Google Sheets
     "BADGE_SHEET_NAME": "Badge List - Access Control",
@@ -44,6 +45,10 @@ DEFAULT_CONFIG = {
     "LOG_LEVEL": "INFO",
     "LOG_RETENTION_DAYS": 7,
     "LOG_MAX_BYTES": 10 * 1024 * 1024,  # 10MB
+
+    # Optional per-purpose log files (if not provided, derived from LOG_FILE)
+    "ACTION_LOG_FILE": None,
+    "WATCHDOG_LOG_FILE": None,
 }
 
 
@@ -76,6 +81,8 @@ class Config:
             "DOOR_HEALTH_USERNAME": "HEALTH_SERVER_USERNAME",
             "DOOR_HEALTH_PASSWORD": "HEALTH_SERVER_PASSWORD",
             "DOOR_HEALTH_REFRESH": "HEALTH_REFRESH_INTERVAL",
+            "DOOR_ACTION_LOG_FILE": "ACTION_LOG_FILE",
+            "DOOR_WATCHDOG_LOG_FILE": "WATCHDOG_LOG_FILE",
         }
 
         for env_key, config_key in env_mappings.items():
