@@ -13,6 +13,13 @@ from .config import config
 logger = None
 logger_lock = threading.Lock()
 
+# Additional per-purpose loggers
+action_logger = None
+action_logger_lock = threading.Lock()
+
+watchdog_logger = None
+watchdog_logger_lock = threading.Lock()
+
 # Timestamps for tracking sync events
 last_google_log_success = None
 last_badge_download = None
@@ -98,9 +105,92 @@ def get_logger() -> logging.Logger:
     return logger
 
 
+def _build_derived_file(base_log_file: str, suffix: str) -> str:
+    """Return a new file path derived from base_log_file by inserting suffix before the extension."""
+    log_dir, base_name, ext = _parse_log_base(base_log_file)
+    return os.path.join(log_dir, f"{base_name}{suffix}{ext}")
+
+
+def _make_handler_for_file(log_file: str, retention_days: int):
+    """Create a handler for a file path that rotates daily and keeps `retention_days` files."""
+    return DailyNamedFileHandler(log_file, retention_days)
+
+
+def get_action_logger() -> logging.Logger:
+    """Get (and create if needed) the action-specific logger that writes to *_action-YYYY-MM-DD.ext"""
+    global action_logger
+    if action_logger is not None:
+        return action_logger
+
+    with action_logger_lock:
+        if action_logger is not None:
+            return action_logger
+
+        name = "door_action"
+        action_logger = logging.getLogger(name)
+
+        # Avoid adding duplicate handlers on repeated imports or calls
+        if action_logger.handlers:
+            return action_logger
+
+        # Use configured override if present, otherwise derive from LOG_FILE
+        action_log_file = config.get("ACTION_LOG_FILE")
+        if not action_log_file:
+            action_log_file = _build_derived_file(config["LOG_FILE"], "_action")
+
+        retention = int(config.get("LOG_RETENTION_DAYS", 7))
+        handler = _make_handler_for_file(action_log_file, retention)
+
+        formatter = logging.Formatter(
+            '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+            datefmt='%Y-%m-%d %H:%M:%S'
+        )
+        handler.setFormatter(formatter)
+        action_logger.addHandler(handler)
+        action_logger.setLevel(get_logger().level)
+        action_logger.propagate = False
+
+        return action_logger
+
+
+def get_watchdog_logger() -> logging.Logger:
+    """Get (and create if needed) the watchdog logger that writes to *_watchdog-YYYY-MM-DD.ext"""
+    global watchdog_logger
+    if watchdog_logger is not None:
+        return watchdog_logger
+
+    with watchdog_logger_lock:
+        if watchdog_logger is not None:
+            return watchdog_logger
+
+        name = "watchdog"
+        watchdog_logger = logging.getLogger(name)
+
+        if watchdog_logger.handlers:
+            return watchdog_logger
+
+        watchdog_log_file = config.get("WATCHDOG_LOG_FILE")
+        if not watchdog_log_file:
+            watchdog_log_file = _build_derived_file(config["LOG_FILE"], "_watchdog")
+
+        retention = int(config.get("LOG_RETENTION_DAYS", 7))
+        handler = _make_handler_for_file(watchdog_log_file, retention)
+
+        formatter = logging.Formatter(
+            '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+            datefmt='%Y-%m-%d %H:%M:%S'
+        )
+        handler.setFormatter(formatter)
+        watchdog_logger.addHandler(handler)
+        watchdog_logger.setLevel(get_logger().level)
+        watchdog_logger.propagate = False
+
+        return watchdog_logger
+
+
 def record_action(action: str, badge_id: Optional[str] = None, status: str = "Success"):
     """
-    Record a door action to local log and optionally Google Sheets.
+    Record a door action to local log and the action-specific log file.
 
     Args:
         action: Description of the action (e.g., "Door Unlocked", "Badge Scanned")
@@ -108,6 +198,7 @@ def record_action(action: str, badge_id: Optional[str] = None, status: str = "Su
         status: Status of the action (default: "Success")
     """
     log = get_logger()
+    act_log = get_action_logger()
 
     # Format log message
     if badge_id:
@@ -115,13 +206,22 @@ def record_action(action: str, badge_id: Optional[str] = None, status: str = "Su
     else:
         message = f"{action} - Status: {status}"
 
-    # Always log locally
+    # Determine severity
     if status.lower() in ["success", "granted"]:
-        log.info(message)
+        level = "info"
     elif status.lower() in ["denied", "rejected"]:
-        log.warning(message)
+        level = "warning"
     else:
-        log.error(message)
+        level = "error"
+
+    # Log to main logger
+    getattr(log, level)(message)
+    # Also log to action-specific logger (separate file)
+    try:
+        getattr(act_log, level)(message)
+    except Exception:
+        # Ensure action logging never breaks main flow
+        log.exception("Failed to log to action logger")
 
 
 def update_last_google_error(message: str):
@@ -267,23 +367,26 @@ def cleanup_old_logs(retention_days: Optional[int] = None):
     if not os.path.exists(log_dir):
         return
 
-    pattern = re.compile(rf"^{re.escape(base_name)}-(\d{{4}}-\d{{2}}-\d{{2}}){re.escape(ext)}$")
+    # Consider base, action, and watchdog derived file names
+    suffixes = ["", "_action", "_watchdog"]
     cutoff = date.today() - timedelta(days=retention_days)
 
     for name in os.listdir(log_dir):
-        match = pattern.match(name)
-        if not match:
-            continue
-        try:
-            file_date = datetime.strptime(match.group(1), "%Y-%m-%d").date()
-        except ValueError:
-            continue
-        if file_date < cutoff:
+        for suffix in suffixes:
+            pattern = re.compile(rf"^{re.escape(base_name + suffix)}-(\d{{4}}-\d{{2}}-\d{{2}}){re.escape(ext)}$")
+            match = pattern.match(name)
+            if not match:
+                continue
             try:
-                os.remove(os.path.join(log_dir, name))
-            except Exception:
-                pass
-
+                file_date = datetime.strptime(match.group(1), "%Y-%m-%d").date()
+            except ValueError:
+                continue
+            if file_date < cutoff:
+                try:
+                    os.remove(os.path.join(log_dir, name))
+                except Exception:
+                    pass
+            break
 
 class DailyNamedFileHandler(logging.Handler):
     """Log handler that writes to a dated log file and rolls over daily."""
@@ -343,3 +446,10 @@ class DailyNamedFileHandler(logging.Handler):
 # Initialize logger at import time so other modules can use `logger` directly
 initialize_last_badge_download_from_csv()
 logger = setup_logger()
+# ensure other logs are created and rotated as well
+try:
+    get_action_logger()
+    get_watchdog_logger()
+except Exception:
+    # Do not raise on import-time logger initialization failures
+    logger.exception("Failed to initialize action/watchdog loggers")

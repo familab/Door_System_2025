@@ -5,6 +5,7 @@ import os
 import logging
 from datetime import datetime
 from unittest.mock import patch
+from lib.config import config
 import lib.logging_utils as logging_utils
 
 
@@ -100,7 +101,7 @@ class TestLoggingUtils(unittest.TestCase):
 
     def tearDown(self):
         """Clean up logger handlers after each test to allow file deletion on Windows."""
-        # Close and remove handlers to release file locks
+        # Close and remove handlers to release file locks for main logger
         if logging_utils.logger:
             for h in logging_utils.logger.handlers[:]:
                 try:
@@ -114,6 +115,33 @@ class TestLoggingUtils(unittest.TestCase):
                     pass
             logging.shutdown()
             logging_utils.logger = None
+
+        # Also close action and watchdog logger handlers if present
+        if getattr(logging_utils, 'action_logger', None):
+            for h in logging_utils.action_logger.handlers[:]:
+                try:
+                    h.flush()
+                    h.close()
+                except Exception:
+                    pass
+                try:
+                    logging_utils.action_logger.removeHandler(h)
+                except Exception:
+                    pass
+            logging_utils.action_logger = None
+
+        if getattr(logging_utils, 'watchdog_logger', None):
+            for h in logging_utils.watchdog_logger.handlers[:]:
+                try:
+                    h.flush()
+                    h.close()
+                except Exception:
+                    pass
+                try:
+                    logging_utils.watchdog_logger.removeHandler(h)
+                except Exception:
+                    pass
+            logging_utils.watchdog_logger = None
 
         # Clean up temp files after handlers are closed
         for p in getattr(self, '_temp_files', []):
@@ -156,6 +184,303 @@ class TestLoggingUtils(unittest.TestCase):
         finally:
             # Defer removal until handlers are closed in tearDown
             self._temp_files.append(log_file)
+
+    def test_action_logger_file_created(self):
+        """Test that record_action writes to action-specific dated file."""
+        import tempfile
+        from datetime import datetime
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            log_file = os.path.join(tmpdir, "door_controller.txt")
+            # Ensure config points to the test log directory so derived files are created there
+            config.config["LOG_FILE"] = log_file
+            config.config["ACTION_LOG_FILE"] = None
+            config.config["LOG_RETENTION_DAYS"] = 7
+
+            logging_utils.setup_logger(log_file)
+
+            # Force recreation of action logger to pick up derived path
+            logging_utils.action_logger = None
+            # Remove any existing handlers on the named logger to ensure a fresh handler is created
+            import logging as _logging
+            existing = _logging.getLogger('door_action')
+            for h in existing.handlers[:]:
+                try:
+                    h.flush()
+                    h.close()
+                except Exception:
+                    pass
+                try:
+                    existing.removeHandler(h)
+                except Exception:
+                    pass
+
+            act_logger = logging_utils.get_action_logger()
+
+            logging_utils.record_action("Door Opened", "ABC123", "Success")
+
+            expected = os.path.join(tmpdir, f"door_controller_action-{datetime.now():%Y-%m-%d}.txt")
+
+            handler_paths = [getattr(h, 'baseFilename', None) for h in act_logger.handlers]
+            # Ensure we created a handler that writes to the expected path
+            self.assertTrue(any(p and os.path.abspath(p) == os.path.abspath(expected) for p in handler_paths),
+                            msg=f"Expected handler writing to {expected}, handlers: {handler_paths}, dir: {os.listdir(tmpdir)}")
+
+            for h in act_logger.handlers:
+                try:
+                    h.flush()
+                except Exception:
+                    pass
+
+            # Now the file should exist and contain our message
+            self.assertTrue(os.path.exists(expected))
+            with open(expected, 'r', encoding='utf-8') as f:
+                contents = f.read()
+            self.assertIn("Door Opened", contents)
+
+            # Close and remove action logger handlers so TemporaryDirectory cleanup can remove files on Windows
+            for h in act_logger.handlers[:]:
+                try:
+                    h.flush()
+                    h.close()
+                except Exception:
+                    pass
+                try:
+                    act_logger.removeHandler(h)
+                except Exception:
+                    pass
+            logging_utils.action_logger = None
+
+            # Close main logger handlers for this test log file as well
+            if logging_utils.logger:
+                for h in logging_utils.logger.handlers[:]:
+                    try:
+                        h.flush()
+                        h.close()
+                    except Exception:
+                        pass
+                    try:
+                        logging_utils.logger.removeHandler(h)
+                    except Exception:
+                        pass
+                logging_utils.logger = None
+
+            # Defer cleanup (if anything remains)
+            self._temp_files.append(expected)
+    def test_cleanup_old_logs_removes_derived_files(self):
+        """Test cleanup removes base, action, and watchdog dated files older than retention."""
+        import tempfile
+        from datetime import date, timedelta
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            base = os.path.join(tmpdir, "door_controller")
+            old_date = date.today() - timedelta(days=10)
+            names = [
+                f"{os.path.basename(base)}-{old_date:%Y-%m-%d}.txt",
+                f"{os.path.basename(base)}_action-{old_date:%Y-%m-%d}.txt",
+                f"{os.path.basename(base)}_watchdog-{old_date:%Y-%m-%d}.txt",
+            ]
+            for n in names:
+                with open(os.path.join(tmpdir, n), 'w', encoding='utf-8') as f:
+                    f.write('old')
+
+            recent_name = f"{os.path.basename(base)}-{date.today():%Y-%m-%d}.txt"
+            with open(os.path.join(tmpdir, recent_name), 'w', encoding='utf-8') as f:
+                f.write('recent')
+
+            config.config["LOG_FILE"] = os.path.join(tmpdir, "door_controller.txt")
+            config.config["LOG_RETENTION_DAYS"] = 7
+
+            # Act
+            logging_utils.cleanup_old_logs(retention_days=7)
+
+            # Assert old removed, recent remains
+            for n in names:
+                self.assertFalse(os.path.exists(os.path.join(tmpdir, n)))
+            self.assertTrue(os.path.exists(os.path.join(tmpdir, recent_name)))
+
+    def test_watchdog_logger_file_created(self):
+        """Test that watchdog logger creates a dated file and writes messages."""
+        import tempfile
+        from datetime import datetime
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            log_file = os.path.join(tmpdir, "door_controller.txt")
+            config.config["LOG_FILE"] = log_file
+            config.config["WATCHDOG_LOG_FILE"] = None
+            config.config["LOG_RETENTION_DAYS"] = 7
+
+            logging_utils.setup_logger(log_file)
+            # Force recreation
+            logging_utils.watchdog_logger = None
+            import logging as _logging
+            existing = _logging.getLogger('watchdog')
+            for h in existing.handlers[:]:
+                try:
+                    h.flush()
+                    h.close()
+                except Exception:
+                    pass
+                try:
+                    existing.removeHandler(h)
+                except Exception:
+                    pass
+
+            wd_logger = logging_utils.get_watchdog_logger()
+            wd_logger.info("heartbeat")
+
+            expected = os.path.join(tmpdir, f"door_controller_watchdog-{datetime.now():%Y-%m-%d}.txt")
+            handler_paths = [getattr(h, 'baseFilename', None) for h in wd_logger.handlers]
+            self.assertTrue(any(p and os.path.abspath(p) == os.path.abspath(expected) for p in handler_paths))
+
+            for h in wd_logger.handlers:
+                try:
+                    h.flush()
+                except Exception:
+                    pass
+
+            self.assertTrue(os.path.exists(expected))
+            with open(expected, 'r', encoding='utf-8') as f:
+                contents = f.read()
+            self.assertIn("heartbeat", contents)
+
+            # cleanup handlers to avoid file locks
+            for h in wd_logger.handlers[:]:
+                try:
+                    h.flush(); h.close()
+                except Exception:
+                    pass
+                try:
+                    wd_logger.removeHandler(h)
+                except Exception:
+                    pass
+            logging_utils.watchdog_logger = None
+
+            # Close main logger handlers for this test log file as well
+            if logging_utils.logger:
+                for h in logging_utils.logger.handlers[:]:
+                    try:
+                        h.flush(); h.close()
+                    except Exception:
+                        pass
+                    try:
+                        logging_utils.logger.removeHandler(h)
+                    except Exception:
+                        pass
+                logging_utils.logger = None
+
+            # Defer cleanup (if anything remains)
+            self._temp_files.append(expected)
+            self._temp_files.append(log_file)
+
+    def test_config_overrides_create_custom_files(self):
+        """Test explicit ACTION_LOG_FILE and WATCHDOG_LOG_FILE in config are used."""
+        import tempfile
+        from datetime import datetime
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            action_base = os.path.join(tmpdir, "custom_action.txt")
+            watchdog_base = os.path.join(tmpdir, "custom_watchdog.txt")
+
+            config.config["ACTION_LOG_FILE"] = action_base
+            config.config["WATCHDOG_LOG_FILE"] = watchdog_base
+            config.config["LOG_RETENTION_DAYS"] = 7
+
+            # Reset and create loggers
+            logging_utils.action_logger = None
+            logging_utils.watchdog_logger = None
+
+            # Remove existing named loggers handlers
+            import logging as _logging
+            for name in ("door_action", "watchdog"):
+                existing = _logging.getLogger(name)
+                for h in existing.handlers[:]:
+                    try:
+                        h.flush(); h.close()
+                    except Exception:
+                        pass
+                    try:
+                        existing.removeHandler(h)
+                    except Exception:
+                        pass
+
+            act_logger = logging_utils.get_action_logger()
+            wd_logger = logging_utils.get_watchdog_logger()
+
+            act_logger.info("act message")
+            wd_logger.info("wd message")
+
+            expected_act = os.path.join(tmpdir, f"custom_action-{datetime.now():%Y-%m-%d}.txt")
+            expected_wd = os.path.join(tmpdir, f"custom_watchdog-{datetime.now():%Y-%m-%d}.txt")
+
+            for h in act_logger.handlers:
+                try:
+                    h.flush()
+                except Exception:
+                    pass
+            for h in wd_logger.handlers:
+                try:
+                    h.flush()
+                except Exception:
+                    pass
+
+            self.assertTrue(os.path.exists(expected_act))
+            self.assertTrue(os.path.exists(expected_wd))
+
+            with open(expected_act, 'r', encoding='utf-8') as f:
+                self.assertIn("act message", f.read())
+            with open(expected_wd, 'r', encoding='utf-8') as f:
+                self.assertIn("wd message", f.read())
+
+            # cleanup
+            for h in act_logger.handlers[:]:
+                try:
+                    h.flush(); h.close()
+                except Exception:
+                    pass
+                try:
+                    act_logger.removeHandler(h)
+                except Exception:
+                    pass
+            logging_utils.action_logger = None
+
+            for h in wd_logger.handlers[:]:
+                try:
+                    h.flush(); h.close()
+                except Exception:
+                    pass
+                try:
+                    wd_logger.removeHandler(h)
+                except Exception:
+                    pass
+            logging_utils.watchdog_logger = None
+
+            self._temp_files.extend([expected_act, expected_wd])
+
+    def test_retention_honored_by_cleanup(self):
+        """Test that cleanup respects LOG_RETENTION_DAYS setting."""
+        import tempfile
+        from datetime import date, timedelta
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            base = os.path.join(tmpdir, "door_controller")
+            old_date = date.today() - timedelta(days=3)
+            names = [
+                f"{os.path.basename(base)}-{old_date:%Y-%m-%d}.txt",
+                f"{os.path.basename(base)}_action-{old_date:%Y-%m-%d}.txt",
+                f"{os.path.basename(base)}_watchdog-{old_date:%Y-%m-%d}.txt",
+            ]
+            for n in names:
+                with open(os.path.join(tmpdir, n), 'w', encoding='utf-8') as f:
+                    f.write('old')
+
+            config.config["LOG_FILE"] = os.path.join(tmpdir, "door_controller.txt")
+            config.config["LOG_RETENTION_DAYS"] = 2
+
+            logging_utils.cleanup_old_logs()
+
+            for n in names:
+                self.assertFalse(os.path.exists(os.path.join(tmpdir, n)))
 
 
 if __name__ == '__main__':

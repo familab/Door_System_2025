@@ -5,7 +5,7 @@ import threading
 from typing import Optional
 
 from .config import config
-from .logging_utils import get_logger
+from .logging_utils import get_watchdog_logger
 
 
 class Watchdog:
@@ -23,7 +23,7 @@ class Watchdog:
         self.interval = interval
         self.running = False
         self.thread = None
-        self.logger = get_logger()
+        self.logger = get_watchdog_logger()
 
     def update_watchdog_heartbeat(self):
         """Write current timestamp to watchdog file."""

@@ -231,13 +231,16 @@ The raw OpenAPI JSON spec is available at `/openapi.json` (e.g., `http://<raspbe
 
 ## Systemd Watchdog
 
-The application writes a heartbeat every 10 seconds to `/tmp/door_controller_watchdog.txt`.
+The application uses two watchdog-related files:
 
-Configure systemd to monitor this file:
+- `logs/door_controller_watchdog-YYYY-MM-DD.txt` (dated): a daily rotating watchdog *log* file produced by the watchdog *logger*; retained per `LOG_RETENTION_DAYS`.
+- `logs/door_controller_watchdog_heartbeat.txt` (no date): a single non-dated *heartbeat* file that records the last time the watchdog updated a timestamp. The watchdog writes the current timestamp to this file at the heartbeat interval and it can be monitored by systemd or other tools to detect liveness.
+
+Configure systemd to monitor the (non-dated) heartbeat file:
 
 ```ini
 [Service]
-ExecStartPre=/bin/sh -c 'echo 0 > /tmp/door_controller_watchdog.txt'
+ExecStartPre=/bin/sh -c 'mkdir -p /tmp && echo "0" > /tmp/door_controller_watchdog.txt || true'
 Restart=always
 RestartSec=5
 ```
