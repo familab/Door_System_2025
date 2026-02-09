@@ -145,3 +145,18 @@ jobs:
       with:
         name: coverage-report
         path: htmlcov/
+
+  automerge:
+    needs: test
+    name: Auto-merge Dependabot PRs
+    if: (github.actor == 'dependabot[bot]' || github.actor == 'imgbot[bot]') && needs.test.result == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Merge PR
+        run: gh pr merge "$PR_URL" --merge
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+
