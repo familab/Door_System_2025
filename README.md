@@ -149,7 +149,7 @@ Create two Google Sheets:
 Edit `config.py` or set environment variables:
 
 ```bash
-export DOOR_HEALTH_PORT=8080
+export DOOR_HEALTH_PORT=3667
 export DOOR_HEALTH_USERNAME=admin
 export DOOR_HEALTH_PASSWORD=changeme
 ```
@@ -235,7 +235,7 @@ sudo journalctl -u door-app.service -f
 The application provides a web-based health dashboard at:
 
 ```
-http://<raspberry-pi-ip>:8080/health
+http://<raspberry-pi-ip>:3667/health
 ```
 
 **Default credentials**: `admin` / `changeme` (change in config!)
@@ -243,10 +243,16 @@ http://<raspberry-pi-ip>:8080/health
 **API Documentation (Swagger UI)**: An interactive API documentation (Swagger UI) is served at:
 
 ```
-http://<raspberry-pi-ip>:8080/docs
+http://<raspberry-pi-ip>:3667/docs
 ```
 
-The raw OpenAPI JSON spec is available at `/openapi.json` (e.g., `http://<raspberry-pi-ip>:8080/openapi.json`). Access to the API docs is protected by the same Basic Auth credentials as the health page.
+The raw OpenAPI JSON spec is available at `/openapi.json` (e.g., `http://<raspberry-pi-ip>:3667/openapi.json`). Access to the API docs is protected by the same Basic Auth credentials as the health page.
+
+### SSL / HTTPS
+
+- The health server can optionally serve HTTPS. Enable TLS with the `HEALTH_SERVER_TLS` config option or environment variable `DOOR_HEALTH_TLS=true`.
+- When TLS is enabled and no certificate is provided, the server will attempt to generate a self-signed certificate (default path: `cert.pem` in the project root). For production, prefer providing a trusted certificate or terminate TLS at a reverse proxy (e.g., nginx) that handles certificates.
+- If TLS initialization fails (missing dependency or cert generation/wrapping error), the server will fall back to HTTP and log the reason. The server logs the actual scheme (`http` or `https`) and the port during startup.
 
 ### Admin and Metrics
 
@@ -389,7 +395,7 @@ Notes & recommended follow-ups:
 | `DOOR_UNLOCK_PIN` | 27 | GPIO pin for unlock button |
 | `DOOR_LOCK_PIN` | 22 | GPIO pin for lock button |
 | `DOOR_UNLOCK_DURATION` | 3600 | Unlock duration (seconds) |
-| `DOOR_HEALTH_PORT` | 8080 | Health server port |
+| `DOOR_HEALTH_PORT` | 3667 | Health server port |
 | `DOOR_HEALTH_USERNAME` | admin | Health page username |
 | `DOOR_HEALTH_PASSWORD` | changeme | Health page password |
 | `DOOR_METRICS_DB_PATH` | logs/metrics | Base directory for monthly SQLite metrics DBs |
@@ -402,7 +408,7 @@ Create `config.json` to override defaults:
 {
   "RELAY_PIN": 17,
   "UNLOCK_DURATION": 3600,
-  "HEALTH_SERVER_PORT": 8080,
+  "HEALTH_SERVER_PORT": 3667,
   "METRICS_DB_PATH": "logs/metrics"
 }
 ```
@@ -494,9 +500,9 @@ sudo i2cdetect -y 1
 
 ### Health page not accessible
 
-- Check firewall: `sudo ufw allow 8080`
+- Check firewall: `sudo ufw allow 3667`
 - Verify port in config matches URL
-- Check server started: `netstat -tuln | grep 8080`
+- Check server started: `netstat -tuln | grep 3667`
 
 ## Security Considerations
 

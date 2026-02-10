@@ -3,6 +3,9 @@ import base64
 import json
 import socket
 import threading
+import os
+import ssl
+from datetime import datetime, timedelta
 from http.server import HTTPServer, BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Optional
 from urllib.parse import urlsplit
@@ -15,6 +18,75 @@ from .state import APPLICATION_JSON, TEXT_HTML
 from . import routes_public
 from . import routes_admin
 from . import routes_metrics
+
+
+# Helper: generate a self-signed certificate (optional dependency: cryptography)
+def _generate_self_signed_cert(cert_path: str):
+    """Generate a self-signed cert at cert_path if it doesn't exist.
+
+    Uses the `cryptography` package. If it's not available, an exception is raised.
+    """
+    if os.path.exists(cert_path):
+        return
+    logger = get_logger()
+    try:
+        from cryptography import x509
+        from cryptography.x509.oid import NameOID
+        from cryptography.hazmat.primitives import hashes, serialization
+        from cryptography.hazmat.primitives.asymmetric import rsa
+        from cryptography.hazmat.backends import default_backend
+    except Exception as e:
+        logger.error(
+            "cryptography package is required to auto-generate TLS certificates; install 'cryptography'"
+        )
+        raise
+
+    logger.info(f"Generating self-signed certificate at {cert_path}")
+    # Generate key
+    key = rsa.generate_private_key(public_exponent=65537, key_size=2048, backend=default_backend())
+
+    # Build certificate
+    subject = issuer = x509.Name([
+        x509.NameAttribute(NameOID.COUNTRY_NAME, u"US"),
+        x509.NameAttribute(NameOID.STATE_OR_PROVINCE_NAME, u"Local"),
+        x509.NameAttribute(NameOID.LOCALITY_NAME, u"Local"),
+        x509.NameAttribute(NameOID.ORGANIZATION_NAME, u"BadgeScanner"),
+        x509.NameAttribute(NameOID.COMMON_NAME, u"localhost"),
+    ])
+
+    cert = (
+        x509.CertificateBuilder()
+        .subject_name(subject)
+        .issuer_name(issuer)
+        .public_key(key.public_key())
+        .serial_number(x509.random_serial_number())
+        .not_valid_before(datetime.utcnow())
+        .not_valid_after(datetime.utcnow() + timedelta(days=3650))
+        .add_extension(x509.SubjectAlternativeName([x509.DNSName(u"localhost")]), critical=False)
+        .sign(key, hashes.SHA256(), default_backend())
+    )
+
+    # Ensure parent directory exists
+    parent = os.path.dirname(cert_path)
+    if parent and not os.path.exists(parent):
+        os.makedirs(parent, exist_ok=True)
+
+    # Write key + cert into a single PEM file
+    with open(cert_path, "wb") as f:
+        f.write(
+            key.private_bytes(
+                encoding=serialization.Encoding.PEM,
+                format=serialization.PrivateFormat.TraditionalOpenSSL,
+                encryption_algorithm=serialization.NoEncryption(),
+            )
+        )
+        f.write(cert.public_bytes(serialization.Encoding.PEM))
+    # Restrict permissions where possible
+    try:
+        os.chmod(cert_path, 0o600)
+    except Exception:
+        # Not critical on Windows
+        pass
 
 
 # Paths that do not require authentication
@@ -183,14 +255,21 @@ class RequestHandler(BaseHTTPRequestHandler):
 
 
 class HealthServer:
-    """HTTP server manager (same API as before for start.py compatibility)."""
+    """HTTP/HTTPS server manager (same API as before for start.py compatibility)."""
 
-    def __init__(self, port: Optional[int] = None):
+    def __init__(self, port: Optional[int] = None, tls: Optional[bool] = None, cert_file: Optional[str] = None):
         # Allow port 0 (ephemeral port) so tests can start on an available port.
         if port is not None:
             self.port = port
         else:
             self.port = config["HEALTH_SERVER_PORT"]
+        # TLS settings: default to config value if not explicitly provided
+        if tls is None:
+            self.tls = bool(config.get("HEALTH_SERVER_TLS", False))
+        else:
+            self.tls = bool(tls)
+        self.cert_file = cert_file or config.get("HEALTH_SERVER_CERT_FILE")
+
         self.server = None
         self.thread = None
         self.running = False
@@ -206,8 +285,33 @@ class HealthServer:
             try:
                 # Use ThreadingHTTPServer so multiple requests are handled concurrently
                 self.server = ThreadingHTTPServer(("0.0.0.0", self.port), RequestHandler)
+
+                if self.tls:
+                    # Ensure cert exists (generate if missing)
+                    cert_path = os.path.abspath(self.cert_file)
+                    if not os.path.exists(cert_path):
+                        try:
+                            _generate_self_signed_cert(cert_path)
+                        except Exception as e:
+                            self.logger.error(f"Failed to generate TLS certificate: {e}")
+                            # Fall back to non-TLS server if generation fails
+                            self.logger.warning("Starting without TLS")
+                            self.tls = False
+
+                # Wrap server socket with TLS if requested
+                if self.tls:
+                    try:
+                        context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+                        context.load_cert_chain(certfile=cert_path)
+                        self.server.socket = context.wrap_socket(self.server.socket, server_side=True)
+                    except Exception as e:
+                        self.logger.error(f"Failed to wrap server socket with TLS: {e}")
+                        self.logger.warning("Starting without TLS")
+                        self.tls = False
+
                 actual_port = self.server.server_address[1] if self.server else self.port
-                self.logger.info(f"Health server started on port {actual_port}")
+                scheme = "https" if self.tls else "http"
+                self.logger.info(f"Health server started on {scheme} port {actual_port}")
                 self.server.serve_forever()
             except Exception as e:
                 self.logger.error(f"Health server error: {e}")
@@ -242,11 +346,11 @@ class HealthServer:
 _health_server: Optional[HealthServer] = None
 
 
-def start_health_server(port: Optional[int] = None):
+def start_health_server(port: Optional[int] = None, tls: Optional[bool] = None, cert_file: Optional[str] = None):
     """Start the global health server instance."""
     global _health_server
     if _health_server is None:
-        _health_server = HealthServer(port=port)
+        _health_server = HealthServer(port=port, tls=tls, cert_file=cert_file)
     _health_server.start()
 
 
