@@ -57,8 +57,8 @@ class TestLoggingUtils(unittest.TestCase):
         try:
             logging_utils.setup_logger(log_file)
 
-            # Record various actions
-            logging_utils.record_action("Door Opened")
+            # Record various actions (include unit_test badge id for tests)
+            logging_utils.record_action("Door Opened", "unit_test", "Success")
             logging_utils.record_action("Badge Scanned", "ABC123", "Granted")
             logging_utils.record_action("Invalid Badge", "XYZ789", "Denied")
 
@@ -67,6 +67,7 @@ class TestLoggingUtils(unittest.TestCase):
                 log_contents = f.read()
 
             self.assertIn("Door Opened", log_contents)
+            self.assertIn("unit_test", log_contents)
             self.assertIn("ABC123", log_contents)
             self.assertIn("Granted", log_contents)
             self.assertIn("XYZ789", log_contents)

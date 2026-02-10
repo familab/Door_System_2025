@@ -6,6 +6,8 @@ import time
 from datetime import datetime
 import lib.door_control as door_control
 
+# Badge id used in unit tests for logable actions
+UNIT_TEST_BADGE = 'unit_test'
 
 class MockGPIO:
     """Mock GPIO module for testing."""
@@ -28,18 +30,18 @@ class TestDoorStatus(unittest.TestCase):
         door_control._door_status_updated = datetime.now()
 
     def test_set_door_status(self):
-        """Test setting door status."""
-        door_control.set_door_status(True)
+        """Test setting door status (include badge id in logs)."""
+        door_control.set_door_status(True, badge_id=UNIT_TEST_BADGE)
         self.assertTrue(door_control.get_door_status())
 
-        door_control.set_door_status(False)
+        door_control.set_door_status(False, badge_id=UNIT_TEST_BADGE)
         self.assertFalse(door_control.get_door_status())
 
     def test_get_door_status_updated(self):
         """Test getting door status update timestamp."""
         before = datetime.now()
         time.sleep(0.01)
-        door_control.set_door_status(True)
+        door_control.set_door_status(True, badge_id=UNIT_TEST_BADGE)
         updated = door_control.get_door_status_updated()
 
         self.assertGreater(updated, before)
@@ -50,8 +52,8 @@ class TestDoorStatus(unittest.TestCase):
 
         def toggle_status():
             for _ in range(100):
-                door_control.set_door_status(True)
-                door_control.set_door_status(False)
+                door_control.set_door_status(True, badge_id=UNIT_TEST_BADGE)
+                door_control.set_door_status(False, badge_id=UNIT_TEST_BADGE)
                 results.append(door_control.get_door_status())
 
         threads = [threading.Thread(target=toggle_status) for _ in range(5)]
@@ -105,8 +107,8 @@ class TestDoorController(unittest.TestCase):
             self.controller.unlock_timer.cancel()
 
     def test_unlock_door(self):
-        """Test unlocking the door."""
-        self.controller.unlock_door(duration=1)
+        """Test unlocking the door (include badge id in logs)."""
+        self.controller.unlock_door(duration=1, badge_id=UNIT_TEST_BADGE)
 
         # Check GPIO was set HIGH
         self.assertEqual(self.mock_gpio.outputs[self.relay_pin], MockGPIO.HIGH)
@@ -124,11 +126,11 @@ class TestDoorController(unittest.TestCase):
     def test_lock_door(self):
         """Test locking the door."""
         # First unlock
-        door_control.set_door_status(True)
+        door_control.set_door_status(True, badge_id=UNIT_TEST_BADGE)
         self.mock_gpio.outputs[self.relay_pin] = MockGPIO.HIGH
 
         # Then lock
-        self.controller.lock_door()
+        self.controller.lock_door(badge_id=UNIT_TEST_BADGE)
 
         # Check GPIO was set LOW
         self.assertEqual(self.mock_gpio.outputs[self.relay_pin], MockGPIO.LOW)
@@ -137,10 +139,10 @@ class TestDoorController(unittest.TestCase):
         self.assertFalse(door_control.get_door_status())
 
     def test_unlock_temporarily(self):
-        """Test temporary unlock."""
+        """Test temporary unlock (include badge id in logs)."""
         initial_status = door_control.get_door_status()
 
-        self.controller.unlock_temporarily(duration=1)
+        self.controller.unlock_temporarily(duration=1, badge_id=UNIT_TEST_BADGE)
 
         # Check door was unlocked
         self.assertEqual(self.mock_gpio.outputs[self.relay_pin], MockGPIO.HIGH)
@@ -167,11 +169,11 @@ class TestDoorController(unittest.TestCase):
     def test_unlock_door_already_unlocked(self):
         """Test unlocking when already unlocked."""
         # First unlock
-        self.controller.unlock_door(duration=10)
+        self.controller.unlock_door(duration=10, badge_id=UNIT_TEST_BADGE)
         initial_timer = self.controller.unlock_timer
 
         # Try to unlock again
-        self.controller.unlock_door(duration=10)
+        self.controller.unlock_door(duration=10, badge_id=UNIT_TEST_BADGE)
 
         # Original timer should be cancelled
         self.assertIsNot(self.controller.unlock_timer, initial_timer)
@@ -180,11 +182,11 @@ class TestDoorController(unittest.TestCase):
         self.controller.unlock_timer.cancel()
 
     def test_lock_door_cancels_timer(self):
-        """Test that locking cancels unlock timer."""
-        self.controller.unlock_door(duration=10)
+        """Test that locking cancels unlock timer (include badge id in logs)."""
+        self.controller.unlock_door(duration=10, badge_id=UNIT_TEST_BADGE)
         self.assertTrue(self.controller.unlock_timer.is_alive())
 
-        self.controller.lock_door()
+        self.controller.lock_door(badge_id=UNIT_TEST_BADGE)
 
         # Timer should be cancelled
         self.assertIsNone(self.controller.unlock_timer)

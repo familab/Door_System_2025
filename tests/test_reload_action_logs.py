@@ -44,6 +44,37 @@ def test_reload_consumes_action_logs_and_inserts(tmp_path):
     assert "Door OPEN/UNLOCKED" in txt
 
 
+def test_ingest_records_import_metadata_and_prevents_duplicates(tmp_path):
+    logs_dir = tmp_path / "logs"
+    logs_dir.mkdir()
+    content = (
+        "2026-02-01 10:00:00 - door_action - INFO - Badge Scan - Badge: abc - Status: Granted\n"
+        "2026-02-01 10:00:00 - door_action - INFO - Badge Scan - Badge: abc - Status: Granted\n"
+    )
+    log_file = logs_dir / "door_controller_action-2026-02-01.txt"
+    log_file.write_text(content)
+
+    db_base = tmp_path / "metrics"
+    db_base.mkdir()
+
+    # ingest twice without deleting source lines to simulate repeated reloads
+    inserted1 = ingest_action_log_file(str(log_file), base_path=str(db_base), delete_file=False)
+    inserted2 = ingest_action_log_file(str(log_file), base_path=str(db_base), delete_file=False)
+
+    assert inserted1 == 2
+    # second ingest should not duplicate same source lines
+    assert inserted2 == 0
+
+    # verify metadata recorded
+    db_path = get_month_db_path("2026-02", base_path=str(db_base))
+    conn = sqlite3.connect(db_path)
+    cur = conn.cursor()
+    cur.execute("SELECT imported_file, imported_line_number FROM events ORDER BY imported_line_number ASC")
+    rows = cur.fetchall()
+    conn.close()
+    assert rows == [("door_controller_action-2026-02-01.txt", 1), ("door_controller_action-2026-02-01.txt", 2)]
+
+
 def test_ingest_action_log_file_deletes_by_default(tmp_path):
     logs_dir = tmp_path / "logs"
     logs_dir.mkdir()

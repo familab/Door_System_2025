@@ -112,7 +112,7 @@ class DoorController:
             # temporary unlocks use a separate timer with relock logic in unlock_temporarily
             self.unlock_timer = threading.Timer(duration, self.lock_door)
             self.unlock_timer.start()
-    def lock_door(self):
+    def lock_door(self, badge_id: int | str = -1):
         """Lock the door."""
         with self.gpio_lock:
             if self.unlock_timer is not None:
@@ -121,7 +121,7 @@ class DoorController:
 
             if get_door_status():  # Only lock if currently unlocked
                 self.gpio.output(self.relay_pin, self.gpio.LOW)
-                set_door_status(False)
+                set_door_status(False, badge_id)
                 self.logger.info("Door locked")
 
     def unlock_temporarily(self, duration: int, badge_id: int | str = -1):

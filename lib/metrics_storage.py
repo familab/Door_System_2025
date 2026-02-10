@@ -16,7 +16,9 @@ CREATE TABLE IF NOT EXISTS events (
     event_type TEXT NOT NULL,
     badge_id TEXT,
     status TEXT NOT NULL,
-    raw_message TEXT NOT NULL
+    raw_message TEXT NOT NULL,
+    imported_file TEXT,
+    imported_line_number INTEGER
 );
 """
 
@@ -24,6 +26,8 @@ EVENTS_INDEX_SQL = (
     "CREATE INDEX IF NOT EXISTS idx_events_ts ON events(ts);",
     "CREATE INDEX IF NOT EXISTS idx_events_event_type ON events(event_type);",
     "CREATE INDEX IF NOT EXISTS idx_events_badge_id ON events(badge_id);",
+    # Prevent importing the same source line twice
+    "CREATE UNIQUE INDEX IF NOT EXISTS idx_events_imported_file_line ON events(imported_file, imported_line_number);",
 )
 
 _ACTION_LINE_RE = re.compile(
@@ -176,13 +180,16 @@ def ingest_action_log_file(path: str, base_path: Optional[str] = None, delete_fi
     events_to_insert = []
     kept_lines = []
 
-    # Read and parse lines
+    # Read and parse lines (capture source file and line number)
+    basename = os.path.basename(path)
     with open(path, "r", encoding="utf-8", errors="replace") as fh:
-        for line in fh:
+        for lineno, line in enumerate(fh, start=1):
             parsed = parse_action_log_line(line)
             if parsed is None:
                 kept_lines.append(line)
                 continue
+            parsed["imported_file"] = basename
+            parsed["imported_line_number"] = lineno
             events_to_insert.append(parsed)
 
     if not events_to_insert:
@@ -209,8 +216,9 @@ def ingest_action_log_file(path: str, base_path: Optional[str] = None, delete_fi
             conn.execute("PRAGMA synchronous=OFF;")
             cur = conn.cursor()
             cur.execute("BEGIN")
+            before_changes = conn.total_changes
             cur.executemany(
-                "INSERT INTO events (ts, event_type, badge_id, status, raw_message) VALUES (?, ?, ?, ?, ?)",
+                "INSERT OR IGNORE INTO events (ts, event_type, badge_id, status, raw_message, imported_file, imported_line_number) VALUES (?, ?, ?, ?, ?, ?, ?)",
                 [
                     (
                         r["ts"],
@@ -218,12 +226,16 @@ def ingest_action_log_file(path: str, base_path: Optional[str] = None, delete_fi
                         r.get("badge_id"),
                         r.get("status"),
                         r.get("raw_message"),
+                        r.get("imported_file"),
+                        r.get("imported_line_number"),
                     )
                     for r in rows
                 ],
             )
             conn.commit()
-            inserted += len(rows)
+            # Compute how many rows were actually inserted in this connection
+            after_changes = conn.total_changes
+            inserted += (after_changes - before_changes)
         except Exception:
             conn.rollback()
             raise
