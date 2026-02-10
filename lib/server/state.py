@@ -20,6 +20,7 @@ _pn532_lock = threading.Lock()
 
 # Badge refresh callback (set by start.py)
 _badge_refresh_fn = None
+_door_toggle_fn = None
 
 # Rate limit: last time each action was allowed (seconds since epoch)
 _last_badge_refresh_time = 0.0
@@ -65,6 +66,17 @@ def set_badge_refresh_callback(fn):
 def get_badge_refresh_callback():
     """Return the registered badge refresh callback or None."""
     return _badge_refresh_fn
+
+
+def set_door_toggle_callback(fn):
+    """Register a callback for manual door lock/unlock toggle."""
+    global _door_toggle_fn
+    _door_toggle_fn = fn
+
+
+def get_door_toggle_callback():
+    """Return the registered door toggle callback or None."""
+    return _door_toggle_fn
 
 
 def check_rate_limit_badge_refresh() -> tuple[bool, str]:

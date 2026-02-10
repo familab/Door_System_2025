@@ -253,7 +253,7 @@ class TestRequestHandler(unittest.TestCase):
 
             # If the server is single-threaded, the two requests would take ~1.0s (sum of sleeps);
             # with ThreadingHTTPServer they should complete close to the single sleep duration.
-            self.assertTrue(elapsed < 1.2, f"Requests took too long: {elapsed}")
+            self.assertLess(elapsed, 1.2, f"Requests took too long: {elapsed}")
             self.assertEqual(len(results), 2)
         finally:
             hs.stop()
@@ -297,6 +297,8 @@ class TestRequestHandler(unittest.TestCase):
         body = handler.wfile.getvalue()
         self.assertIn(b"Admin Dashboard", body)
         self.assertIn(b"Refresh Badge List", body)
+        self.assertIn(b"toggleDoorBtn", body)
+        self.assertIn(b"/metrics", body)
         self.assertNotIn(b"Refresh System State", body)
         self.assertIn(b"Last 50 System Log Lines", body)
         self.assertIn(b"Last 50 Action Log Lines", body)
@@ -444,6 +446,102 @@ class TestRequestHandler(unittest.TestCase):
         body = handler.wfile.getvalue()
         self.assertIn(b"429", body)
         self.assertIn(b"Rate limited", body)
+
+    def test_toggle_requires_auth(self):
+        """POST /api/toggle without auth returns 401."""
+        handler = self._create_handler(path="/api/toggle")
+        handler.command = "POST"
+        handler.do_POST()
+        body = handler.wfile.getvalue()
+        self.assertIn(b"401", body)
+
+    def test_toggle_calls_callback(self):
+        """POST /api/toggle calls registered callback and returns updated state."""
+        credentials = base64.b64encode(b"testuser:testpass").decode("ascii")
+        handler = self._create_handler(auth_header=f"Basic {credentials}", path="/api/toggle", method="POST")
+        with patch("lib.server.routes_admin.get_door_toggle_callback", return_value=lambda: "unlocked"):
+            handler.do_POST()
+        body = handler.wfile.getvalue()
+        self.assertIn(b"200", body)
+        self.assertIn(b'"state": "unlocked"', body)
+        self.assertIn(b'"next_action": "Lock Door"', body)
+
+    def test_metrics_page_authenticated(self):
+        """GET /metrics with auth renders metrics dashboard."""
+        credentials = base64.b64encode(b"testuser:testpass").decode("ascii")
+        auth_header = f"Basic {credentials}"
+        handler = self._create_handler(auth_header=auth_header, path="/metrics")
+        handler.do_GET()
+        body = handler.wfile.getvalue()
+        self.assertIn(b"Door Metrics", body)
+        self.assertIn(b"Badge Scans Per Hour", body)
+
+    def test_metrics_api_graph_endpoint(self):
+        """GET /api/metrics/badge-scans-per-hour returns graph JSON payload."""
+        credentials = base64.b64encode(b"testuser:testpass").decode("ascii")
+        auth_header = f"Basic {credentials}"
+        handler = self._create_handler(auth_header=auth_header, path="/api/metrics/badge-scans-per-hour")
+        with patch(
+            "lib.server.routes_metrics.query_events_range",
+            return_value=[
+                {"ts": "2026-02-08 10:00:00", "event_type": "Badge Scan", "badge_id": "abc", "status": "Granted", "raw_message": "x"},
+                {"ts": "2026-02-08 10:15:00", "event_type": "Badge Scan", "badge_id": "def", "status": "Denied", "raw_message": "y"},
+            ],
+        ):
+            handler.do_GET()
+        body = handler.wfile.getvalue()
+        self.assertIn(b"200", body)
+        self.assertIn(b'"labels"', body)
+        self.assertIn(b'"values"', body)
+
+    def test_metrics_timeline_pagination(self):
+        """GET /api/metrics/full-event-timeline returns paginated items."""
+        credentials = base64.b64encode(b"testuser:testpass").decode("ascii")
+        auth_header = f"Basic {credentials}"
+        handler = self._create_handler(
+            auth_header=auth_header,
+            path="/api/metrics/full-event-timeline?page=1&page_size=1",
+        )
+        with patch(
+            "lib.server.routes_metrics.query_events_range",
+            return_value=[
+                {"ts": "2026-02-08 10:00:00", "event_type": "Badge Scan", "badge_id": "abc", "status": "Granted", "raw_message": "x"},
+                {"ts": "2026-02-08 10:10:00", "event_type": "Manual Lock", "badge_id": None, "status": "Success", "raw_message": "y"},
+            ],
+        ):
+            handler.do_GET()
+        body = handler.wfile.getvalue()
+        self.assertIn(b"200", body)
+        self.assertIn(b'"total": 2', body)
+        self.assertIn(b'"page_size": 1', body)
+
+    def test_metrics_export_json(self):
+        """GET /api/metrics/export returns downloadable JSON for month."""
+        credentials = base64.b64encode(b"testuser:testpass").decode("ascii")
+        auth_header = f"Basic {credentials}"
+        handler = self._create_handler(auth_header=auth_header, path="/api/metrics/export?month=2026-02&format=json")
+        with patch(
+            "lib.server.routes_metrics.query_month_events",
+            return_value=[{"ts": "2026-02-01 10:00:00", "event_type": "Manual Lock", "badge_id": None, "status": "Success", "raw_message": "x"}],
+        ):
+            handler.do_GET()
+        body = handler.wfile.getvalue()
+        self.assertIn(b"200", body)
+        self.assertIn(b"Manual Lock", body)
+
+    def test_metrics_export_csv(self):
+        """GET /api/metrics/export returns downloadable CSV for month."""
+        credentials = base64.b64encode(b"testuser:testpass").decode("ascii")
+        auth_header = f"Basic {credentials}"
+        handler = self._create_handler(auth_header=auth_header, path="/api/metrics/export?month=2026-02&format=csv")
+        with patch(
+            "lib.server.routes_metrics.query_month_events",
+            return_value=[{"ts": "2026-02-01 10:00:00", "event_type": "Manual Lock", "badge_id": None, "status": "Success", "raw_message": "x"}],
+        ):
+            handler.do_GET()
+        body = handler.wfile.getvalue()
+        self.assertIn(b"200", body)
+        self.assertIn(b"ts,event_type,badge_id,status,raw_message", body)
 
 
     def test_download_system_current_requires_auth(self):

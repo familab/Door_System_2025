@@ -4,6 +4,8 @@ from .config import config
 from .logging_utils import logger
 from .version import __version__
 
+GRAPH_DATA_DESCRIPTION = "Graph data"
+
 
 def get_openapi_spec(host: Optional[str] = None) -> Dict:
     """Return an OpenAPI 3.0 spec as a Python dict.
@@ -59,6 +61,66 @@ def get_openapi_spec(host: Optional[str] = None) -> Dict:
                         "200": {"description": "Refresh completed (JSON)"},
                         "500": {"description": "Internal server error"},
                         "503": {"description": "Service unavailable (no refresh callback)"}
+                    },
+                    "security": [{"basicAuth": []}]
+                }
+            },
+            "/api/toggle": {
+                "post": {
+                    "summary": "Toggle door lock state",
+                    "description": "Uses the existing manual unlock/lock implementation and returns the new state.",
+                    "responses": {
+                        "200": {"description": "Door state toggled"},
+                        "500": {"description": "Internal server error"},
+                        "503": {"description": "Door toggle callback unavailable"}
+                    },
+                    "security": [{"basicAuth": []}]
+                }
+            },
+            "/metrics": {
+                "get": {
+                    "summary": "Metrics dashboard page",
+                    "description": "HTML page with chart rendering, pagination and date-range filters.",
+                    "parameters": [
+                        {"name": "start_date", "in": "query", "schema": {"type": "string", "format": "date"}},
+                        {"name": "end_date", "in": "query", "schema": {"type": "string", "format": "date"}},
+                        {"name": "page", "in": "query", "schema": {"type": "integer", "minimum": 1}},
+                        {"name": "per_page", "in": "query", "schema": {"type": "integer", "minimum": 1}}
+                    ],
+                    "responses": {"200": {"description": "HTML metrics page"}},
+                    "security": [{"basicAuth": []}]
+                }
+            },
+            "/api/metrics/badge-scans-per-hour": {"get": {"summary": "Badge Scans Per Hour", "responses": {"200": {"description": GRAPH_DATA_DESCRIPTION}}, "security": [{"basicAuth": []}]}},
+            "/api/metrics/door-open-duration": {"get": {"summary": "Door Open Duration Over Time", "responses": {"200": {"description": GRAPH_DATA_DESCRIPTION}}, "security": [{"basicAuth": []}]}},
+            "/api/metrics/top-badge-users": {"get": {"summary": "Top Badge Users", "responses": {"200": {"description": GRAPH_DATA_DESCRIPTION}}, "security": [{"basicAuth": []}]}},
+            "/api/metrics/door-cycles-per-day": {"get": {"summary": "Door Cycles Per Day", "responses": {"200": {"description": GRAPH_DATA_DESCRIPTION}}, "security": [{"basicAuth": []}]}},
+            "/api/metrics/denied-badge-scans": {"get": {"summary": "Denied Badge Scans", "responses": {"200": {"description": GRAPH_DATA_DESCRIPTION}}, "security": [{"basicAuth": []}]}},
+            "/api/metrics/badge-scan-door-open-latency": {"get": {"summary": "Badge Scan to Door Open Latency", "responses": {"200": {"description": GRAPH_DATA_DESCRIPTION}}, "security": [{"basicAuth": []}]}},
+            "/api/metrics/manual-events": {"get": {"summary": "Manual Unlock/Lock Events", "responses": {"200": {"description": GRAPH_DATA_DESCRIPTION}}, "security": [{"basicAuth": []}]}},
+            "/api/metrics/door-left-open-too-long": {"get": {"summary": "Door Left Open Too Long", "responses": {"200": {"description": GRAPH_DATA_DESCRIPTION}}, "security": [{"basicAuth": []}]}},
+            "/api/metrics/hourly-activity-heatmap": {"get": {"summary": "Hourly Activity Heatmap", "responses": {"200": {"description": GRAPH_DATA_DESCRIPTION}}, "security": [{"basicAuth": []}]}},
+            "/api/metrics/full-event-timeline": {
+                "get": {
+                    "summary": "Full Event Timeline",
+                    "parameters": [
+                        {"name": "page", "in": "query", "schema": {"type": "integer", "minimum": 1}},
+                        {"name": "page_size", "in": "query", "schema": {"type": "integer", "minimum": 1}}
+                    ],
+                    "responses": {"200": {"description": "Paginated timeline data"}},
+                    "security": [{"basicAuth": []}]
+                }
+            },
+            "/api/metrics/export": {
+                "get": {
+                    "summary": "Export month data",
+                    "parameters": [
+                        {"name": "month", "in": "query", "required": True, "schema": {"type": "string", "example": "2026-02"}},
+                        {"name": "format", "in": "query", "required": True, "schema": {"type": "string", "enum": ["csv", "json"]}}
+                    ],
+                    "responses": {
+                        "200": {"description": "Monthly export file"},
+                        "400": {"description": "Invalid query parameters"}
                     },
                     "security": [{"basicAuth": []}]
                 }

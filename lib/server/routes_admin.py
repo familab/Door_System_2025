@@ -27,6 +27,7 @@ from .state import (
     get_disk_space,
     get_pn532_status,
     get_badge_refresh_callback,
+    get_door_toggle_callback,
     check_rate_limit_badge_refresh,
     read_log_tail,
     read_log_full,
@@ -115,7 +116,7 @@ def send_admin_page(handler):
 </head>
 <body>
     <h1>Admin Dashboard</h1>
-    <p class="timestamp">Version: {__version__} &nbsp;|&nbsp; <a href="/health">Health</a> &nbsp;|&nbsp; <a href="/docs">Docs</a></p>
+    <p class="timestamp">Version: {__version__} &nbsp;|&nbsp; <a href="/health">Health</a> &nbsp;|&nbsp; <a href="/docs">Docs</a> &nbsp;|&nbsp; <a href="/metrics">Metrics</a></p>
     <p class="timestamp">Machine: {socket.gethostname()} &nbsp; Local IPs: {', '.join(get_local_ips()) or 'None'}</p>
     <p class="timestamp">
         Auto-refresh: {refresh_interval}s &nbsp; Next refresh in <span id="adminRefreshCountdown">{refresh_interval}</span>s
@@ -123,6 +124,12 @@ def send_admin_page(handler):
     <p class="timestamp">
         <button id="refreshBadgeBtn" style="background:#4ec9b0;color:#1e1e1e;padding:6px;border:none;border-radius:4px;cursor:pointer;">Refresh Badge List</button>
         Next badge refresh in <span id="badgeRefreshCountdown">{badge_hms}</span>
+    </p>
+    <p class="timestamp">
+        <button id="toggleDoorBtn" style="background:#dcdcaa;color:#1e1e1e;padding:6px;border:none;border-radius:4px;cursor:pointer;">
+            <span id="toggleDoorIcon">{'&#128275;' if get_door_status() else '&#128274;'}</span>
+            <span id="toggleDoorLabel">{'Lock Door' if get_door_status() else 'Unlock Door'}</span>
+        </button>
     </p>
     <div id="toast" class="toast"></div>
     <table>
@@ -183,6 +190,14 @@ def send_admin_page(handler):
             showToast(res.msg, res.ok ? 'success' : 'error');
             btn.disabled = false;
             if (res.msg.indexOf('Rate limited') === -1) location.reload();
+        }});
+        document.getElementById('toggleDoorBtn').addEventListener('click', async function() {{
+            const btn = this;
+            btn.disabled = true;
+            const res = await post('/api/toggle');
+            showToast(res.msg, res.ok ? 'success' : 'error');
+            btn.disabled = false;
+            if (res.ok) location.reload();
         }});
         // Countdown timer for admin page refresh (reload page when it reaches 0)
         (function() {{
@@ -302,6 +317,49 @@ def handle_post_refresh_badges(handler) -> bool:
         handler.end_headers()
         handler.wfile.write(json.dumps({"success": False, "message": str(e)}).encode("utf-8"))
         return True
+
+
+def handle_post_toggle(handler) -> bool:
+    """Handle POST /api/toggle using the callback registered by start.py."""
+    toggle_fn = get_door_toggle_callback()
+    if toggle_fn is None:
+        handler.send_response(503)
+        handler.send_header("Content-type", APPLICATION_JSON)
+        handler.end_headers()
+        handler.wfile.write(
+            json.dumps({"success": False, "message": "Door toggle not available"}).encode("utf-8")
+        )
+        return True
+
+    try:
+        new_state = str(toggle_fn()).strip().lower()
+    except Exception as exc:
+        get_logger().error(f"Door toggle failed: {exc}")
+        handler.send_response(500)
+        handler.send_header("Content-type", APPLICATION_JSON)
+        handler.end_headers()
+        handler.wfile.write(json.dumps({"success": False, "message": str(exc)}).encode("utf-8"))
+        return True
+
+    if new_state not in ("locked", "unlocked"):
+        new_state = "unlocked" if get_door_status() else "locked"
+    label = "Lock Door" if new_state == "unlocked" else "Unlock Door"
+    icon = "unlocked" if new_state == "unlocked" else "locked"
+    handler.send_response(200)
+    handler.send_header("Content-type", APPLICATION_JSON)
+    handler.end_headers()
+    handler.wfile.write(
+        json.dumps(
+            {
+                "success": True,
+                "state": new_state,
+                "next_action": label,
+                "icon": icon,
+                "message": "Door is now {0}".format(new_state),
+            }
+        ).encode("utf-8")
+    )
+    return True
 
 
 

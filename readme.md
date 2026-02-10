@@ -57,6 +57,8 @@ Credentials:
 - **NFC/RFID Badge Authentication**: PN532-based badge reader with Google Sheets integration
 - **Physical Controls**: Manual unlock (1-hour) and lock buttons
 - **Health Monitoring**: Web-based health dashboard with real-time system status
+- **Admin Toggle Control**: Authenticated `/admin` toggle button with lock/unlock state icon and action label
+- **Metrics Dashboard**: Authenticated `/metrics` page with charts, pagination, date filters, and monthly exports
 - **Robust Logging**: 7-day rotating local logs with Google Sheets failover
 - **Systemd Integration**: Auto-restart on failure with watchdog heartbeat
 - **Thread-Safe**: Concurrent button monitoring and RFID scanning
@@ -246,6 +248,18 @@ http://<raspberry-pi-ip>:8080/docs
 
 The raw OpenAPI JSON spec is available at `/openapi.json` (e.g., `http://<raspberry-pi-ip>:8080/openapi.json`). Access to the API docs is protected by the same Basic Auth credentials as the health page.
 
+### Admin and Metrics
+
+- `/admin` includes:
+  - Manual badge refresh
+  - Door lock/unlock toggle (`POST /api/toggle`)
+  - Link to `/metrics`
+- `/metrics` includes:
+  - Graphs backed by `/api/metrics/*`
+  - Date-range filtering and pagination
+  - Monthly data export (`csv`/`json`)
+  - Browser-side chart export (`png`/`svg`)
+
 ### Health Page Information
 
 - Door status (OPEN/CLOSED)
@@ -337,6 +351,7 @@ This repository includes a deployment workflow that builds a ZIP artifact and de
 - [Optimizations](optimizations.md) — Performance and power optimizations for devices (Wi‑Fi power saving, etc.)
 - [Quick Reference](QUICK_REFERENCE.md) — Short commands and common operations
 - [Data Schema](data-schema.md) — Google Sheets structure and expected formats (badge list and access log)
+- [Metrics](docs/metrics.md) — SQLite ingestion/query design and metrics API behavior
 - **API Docs** (`/docs`) — Interactive Swagger UI for exploring the HTTP API (OpenAPI JSON at `/openapi.json`)
 
 
@@ -377,6 +392,7 @@ Notes & recommended follow-ups:
 | `DOOR_HEALTH_PORT` | 8080 | Health server port |
 | `DOOR_HEALTH_USERNAME` | admin | Health page username |
 | `DOOR_HEALTH_PASSWORD` | changeme | Health page password |
+| `DOOR_METRICS_DB_PATH` | logs/metrics | Base directory for monthly SQLite metrics DBs |
 
 ### Config File
 
@@ -386,7 +402,8 @@ Create `config.json` to override defaults:
 {
   "RELAY_PIN": 17,
   "UNLOCK_DURATION": 3600,
-  "HEALTH_SERVER_PORT": 8080
+  "HEALTH_SERVER_PORT": 8080,
+  "METRICS_DB_PATH": "logs/metrics"
 }
 ```
 

@@ -47,7 +47,14 @@ from lib.logging_utils import (
 )
 from lib.data import GoogleSheetsData
 from lib.door_control import DoorController, set_door_status, get_door_status
-from lib.server import start_health_server, stop_health_server, update_pn532_success, update_pn532_error, set_badge_refresh_callback
+from lib.server import (
+    start_health_server,
+    stop_health_server,
+    update_pn532_success,
+    update_pn532_error,
+    set_badge_refresh_callback,
+    set_door_toggle_callback,
+)
 from lib.watchdog import start_watchdog, stop_watchdog
 
 # GPIO Pin Definitions (from config)
@@ -83,9 +90,6 @@ logger.info("=" * 60)
 data_client = GoogleSheetsData()
 data_client.connect()
 
-
-# Register badge refresh callback so it can be invoked from the admin page
-from lib.server import set_badge_refresh_callback
 
 def _refresh_badge_list():
     """Refresh badge list from Google Sheets and update local CSV backup.
@@ -193,6 +197,18 @@ def lock_door():
     record_action("Manual Lock")
     door_controller.lock_door()
     data_client.log_access("Manual Lock", "Success")
+
+
+def _toggle_door_state():
+    """Reuse existing manual lock/unlock actions and return the new lock state."""
+    if get_door_status():
+        lock_door()
+        return "locked"
+    unlock_door()
+    return "unlocked"
+
+
+set_door_toggle_callback(_toggle_door_state)
 
 
 # Fallback to CSV if Google Sheets is unavailable
