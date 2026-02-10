@@ -384,7 +384,25 @@ def main():
         refresh_thread.start()
 
         logger.info("All systems operational")
-        logger.info(f"Health page available at http://127.0.0.1:{config['HEALTH_SERVER_PORT']}/health")
+        # Detect whether the health server is actually using TLS (https) and log the correct URL
+        try:
+            import lib.server.server as server_module
+            hs = server_module._health_server
+            timeout = time.time() + 2
+            while hs and getattr(hs, "server", None) is None and time.time() < timeout:
+                time.sleep(0.01)
+            if hs and getattr(hs, "server", None):
+                actual_port = hs.server.server_address[1]
+                scheme = "https" if getattr(hs, "tls", False) else "http"
+            else:
+                actual_port = config["HEALTH_SERVER_PORT"]
+                scheme = "https" if bool(config.get("HEALTH_SERVER_TLS")) else "http"
+            logger.info(f"Health page available at {scheme}://127.0.0.1:{actual_port}/health")
+        except Exception:
+            # Fallback to config-based URL if detection fails
+            scheme = "https" if bool(config.get("HEALTH_SERVER_TLS")) else "http"
+            logger.info(f"Health page available at {scheme}://127.0.0.1:{config['HEALTH_SERVER_PORT']}/health")
+
         logger.info(f"Health page credentials: {config['HEALTH_SERVER_USERNAME']} / {config['HEALTH_SERVER_PASSWORD']}")
 
         # Wait for both threads to finish (they won't in normal operation)

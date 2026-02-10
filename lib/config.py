@@ -23,7 +23,7 @@ DEFAULT_CONFIG = {
 
     # File paths
     "CSV_FILE": "google_sheet_data.csv",
-    "CREDS_FILE": "creds.json",
+    "CREDS_FILE": "../creds.json",
     "LOG_FILE": "logs/door_controller.log",
     "METRICS_DB_PATH": "logs/metrics",
     # Watchdog heartbeat file (single, non-dated file). It records the last time the watchdog ran.
@@ -34,10 +34,14 @@ DEFAULT_CONFIG = {
     "LOG_SHEET_NAME": "Access Door Log",
 
     # Health Server
-    "HEALTH_SERVER_PORT": 8080,
+    "HEALTH_SERVER_PORT": 3667, # door
     "HEALTH_SERVER_USERNAME": "admin",
     "HEALTH_SERVER_PASSWORD": "changeme",
     "HEALTH_REFRESH_INTERVAL": 300,  # 5 minutes
+
+    # TLS / HTTPS for health server
+    "HEALTH_SERVER_TLS": True,
+    "HEALTH_SERVER_CERT_FILE": "cert.pem",
 
     # Health cache duration: how long (minutes) to keep health metrics cached
     "HEALTH_CACHE_DURATION_MINUTES": 5,
@@ -86,6 +90,8 @@ class Config:
             "DOOR_HEALTH_USERNAME": "HEALTH_SERVER_USERNAME",
             "DOOR_HEALTH_PASSWORD": "HEALTH_SERVER_PASSWORD",
             "DOOR_HEALTH_REFRESH": "HEALTH_REFRESH_INTERVAL",
+            "DOOR_HEALTH_TLS": "HEALTH_SERVER_TLS",
+            "DOOR_HEALTH_CERT_FILE": "HEALTH_SERVER_CERT_FILE",
             "DOOR_ACTION_LOG_FILE": "ACTION_LOG_FILE",
             "DOOR_WATCHDOG_LOG_FILE": "WATCHDOG_LOG_FILE",
         }
