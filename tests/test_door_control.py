@@ -63,6 +63,16 @@ class TestDoorStatus(unittest.TestCase):
         # Should complete without errors
         self.assertEqual(len(results), 500)
 
+    def test_set_door_status_passes_badge_id(self):
+        """Ensure set_door_status forwards badge_id to record_action when provided."""
+        with patch('lib.door_control.record_action') as mock_record:
+            door_control.set_door_status(True, badge_id='ABC123')
+            mock_record.assert_called_with('Door OPEN/UNLOCKED', 'ABC123')
+            mock_record.reset_mock()
+
+            door_control.set_door_status(False, badge_id=9876)
+            mock_record.assert_called_with('Door CLOSED/LOCKED', '9876')
+
 
 class TestDoorController(unittest.TestCase):
     """Test cases for DoorController class."""
@@ -142,6 +152,17 @@ class TestDoorController(unittest.TestCase):
         # Door should be locked again
         self.assertEqual(self.mock_gpio.outputs[self.relay_pin], MockGPIO.LOW)
         self.assertFalse(door_control.get_door_status())
+
+    def test_unlock_temporarily_passes_badge_id(self):
+        """Ensure temporary unlock attributes open/close actions to the badge."""
+        with patch('lib.door_control.record_action') as mock_record:
+            self.controller.unlock_temporarily(duration=0.1, badge_id='abc123')
+            # Opening should be recorded immediately
+            mock_record.assert_any_call('Door OPEN/UNLOCKED', 'abc123')
+
+            # Wait for auto-lock and verify closing was recorded with same badge id
+            time.sleep(0.25)
+            mock_record.assert_any_call('Door CLOSED/LOCKED', 'abc123')
 
     def test_unlock_door_already_unlocked(self):
         """Test unlocking when already unlocked."""

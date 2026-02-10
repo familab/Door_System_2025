@@ -183,15 +183,15 @@ debounce_time = config["DEBOUNCE_TIME"]
 
 def unlock_door():
     """Unlock door for 1 hour using door controller."""
-    door_controller.unlock_door(UNLOCK_DURATION)
     record_action("Manual Unlock (1 hour)")
+    door_controller.unlock_door(UNLOCK_DURATION)
     data_client.log_access("Manual Unlock (1 hour)", "Success")
 
 
 def lock_door():
     """Lock door using door controller."""
-    door_controller.lock_door()
     record_action("Manual Lock")
+    door_controller.lock_door()
     data_client.log_access("Manual Lock", "Success")
 
 
@@ -303,7 +303,8 @@ def check_rfid(stop_event: threading.Event):
 
                     # Unlock door temporarily if not already unlocked
                     if not get_door_status():
-                        door_controller.unlock_temporarily(config["DOOR_UNLOCK_BADGE_DURATION"])
+                        # Pass badge UID through so actions are attributed to this badge
+                        door_controller.unlock_temporarily(config["DOOR_UNLOCK_BADGE_DURATION"], badge_id=uid_hex)
 
                     # Log to Google Sheets (best effort)
                     data_client.log_access(uid_hex, "Granted")

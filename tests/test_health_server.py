@@ -413,13 +413,20 @@ class TestRequestHandler(unittest.TestCase):
         credentials = base64.b64encode(b"testuser:testpass").decode("ascii")
         handler = self._create_handler(auth_header=f"Basic {credentials}", path="/api/refresh_badges")
         handler.command = "POST"
+        # Ensure Host header is present so we can assert the badge_id URL is derived from it
+        handler.headers["Host"] = "example.local:8888"
         mock_cb = Mock(return_value=(True, "5 badges"))
         server.set_badge_refresh_callback(mock_cb)
         with patch("lib.server.routes_admin.check_rate_limit_badge_refresh", return_value=(True, "")), patch(
             "lib.server.routes_admin.update_last_badge_download"
-        ), patch("lib.server.routes_admin.record_action"):
+        ), patch("lib.server.routes_admin.record_action") as mock_record:
             handler.do_POST()
         mock_cb.assert_called_once()
+        # Ensure record_action was called with badge_id set to the request host URL
+        called_args, called_kwargs = mock_record.call_args
+        self.assertEqual(called_args[0], "Manual Badge Refresh")
+        self.assertEqual(called_kwargs.get("badge_id"), "http://example.local:8888")
+        self.assertEqual(called_kwargs.get("status"), "Success")
         body = handler.wfile.getvalue()
         self.assertIn(b"200", body)
         self.assertIn(b"5 badges", body)

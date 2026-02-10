@@ -269,7 +269,22 @@ def handle_post_refresh_badges(handler) -> bool:
             success = bool(result)
             info = ""
         update_last_badge_download(success=success)
-        record_action("Manual Badge Refresh", status="Success" if success else "Failure")
+        # Derive badge_id from the incoming request's Host header if available, otherwise use client address
+        host_header = None
+        try:
+            host_header = handler.headers.get("Host") if hasattr(handler, "headers") else None
+        except Exception:
+            host_header = None
+        if host_header:
+            badge_id = f"http://{host_header}"
+        else:
+            try:
+                ca = handler.client_address
+                badge_id = f"http://{ca[0]}:{ca[1]}"
+            except Exception:
+                badge_id = None
+
+        record_action("Manual Badge Refresh", badge_id=badge_id, status="Success" if success else "Failure")
         status_code = 200 if success else 500
         handler.send_response(status_code)
         handler.send_header("Content-type", APPLICATION_JSON)
