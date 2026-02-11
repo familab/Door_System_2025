@@ -5,6 +5,9 @@ concurrency:
   group: "${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}"
   cancel-in-progress: true
 
+env:
+  retention_days: 3
+
 on:
   pull_request:
     paths:
@@ -94,3 +97,4 @@ jobs:
           path: |
             diagram/door_controller.svg
             diagram/generated/out/**
+          retention-days: ${{ env.retention_days }}
