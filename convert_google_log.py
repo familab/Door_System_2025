@@ -1,9 +1,12 @@
 import csv
 from datetime import datetime
+import os
 
-csv_path = r'c:\Users\theef\Documents\coding_projects\familab\badge_scanner2\logs\Access Door Log - Sheet1.csv'
-output_dir = r'c:\Users\theef\Documents\coding_projects\familab\badge_scanner2\logs'
-output_file = f'{output_dir}\\door_controller_action.log'
+# Use relative paths from script location
+script_dir = os.path.dirname(os.path.abspath(__file__))
+csv_path = os.path.join(script_dir, 'logs', 'Access Door Log - Sheet1.csv')
+output_dir = os.path.join(script_dir, 'logs')
+output_file = os.path.join(output_dir, 'door_controller_action.log')
 
 all_lines = []
 
