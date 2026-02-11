@@ -24,6 +24,18 @@ This folder contains a [PinViz](https://pypi.org/project/pinviz/) diagram-as-cod
 Install PinViz (requires **Python 3.12+**):
 
 ```bash
+cd diagram
+py -3.12 -m venv venv
+source venv/bin/activate  # On Linux/macOS
+# or
+venv\Scripts\activate  # On Windows
+
+pip install -r requirements.txt
+```
+
+Install pinviz (via venv or pipx):
+
+```bash
 pip install pinviz
 ```
 
