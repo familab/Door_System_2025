@@ -6,9 +6,6 @@ concurrency:
   cancel-in-progress: true
 
 on:
-  push:
-    paths:
-      - 'diagram/**'
   pull_request:
     paths:
       - 'diagram/**'
