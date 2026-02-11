@@ -9,9 +9,9 @@ from unittest.mock import Mock, patch, MagicMock
 
 import base64
 
-import lib.server as server
-import lib.server.state as server_state
-from lib.server.server import RequestHandler, _health_server, start_health_server, stop_health_server
+import src_serviceserver as server
+import src_serviceserver.state as server_state
+from src_serviceserver.server import RequestHandler, _health_server, start_health_server, stop_health_server
 
 
 class TestServerStateFunctions(unittest.TestCase):
@@ -223,7 +223,7 @@ class TestRequestHandler(unittest.TestCase):
         import urllib.request
         import time
         import threading
-        import lib.server.routes_public as rp
+        import src_serviceserver.routes_public as rp
 
         hs = server.HealthServer(port=0, tls=True)
         hs.start()
@@ -651,7 +651,7 @@ class TestHealthServer(unittest.TestCase):
     @patch("lib.server.server.HTTPServer")
     def test_global_start_stop(self, mock_http_server):
         mock_http_server.return_value.serve_forever = lambda: time.sleep(0.1)
-        import lib.server.server as server_module
+        import src_serviceserver.server as server_module
         server_module._health_server = None
         start_health_server(port=8888)
         self.assertIsNotNone(server_module._health_server)

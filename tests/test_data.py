@@ -5,7 +5,7 @@ import os
 import types
 from unittest.mock import MagicMock, patch
 
-from lib.data import GoogleSheetsData
+from src_servicedata import GoogleSheetsData
 
 
 class TestGoogleSheetsData(unittest.TestCase):
