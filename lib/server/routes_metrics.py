@@ -148,6 +148,7 @@ def send_metrics_page(handler, raw_query: str):
 <head>
   <meta charset="utf-8">
   <title>Door Metrics</title>
+  <link rel="icon" href="https://images.squarespace-cdn.com/content/v1/65fbda49f5eb7e7df1ae5f87/1711004274233-C9RL74H38DXHYWBDMLSS/favicon.ico?format=100w">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
   <style>
     body {{ font-family: monospace; margin: 20px; background: #1e1e1e; color: #d4d4d4; }}
@@ -314,6 +315,40 @@ async function fetchMetrics(start, end) {{
   return allEvents;
 }}
 
+// Fetch for a potentially large date range by splitting into <=365-day chunks
+async function fetchMetricsRange(start, end) {{
+  const maxDays = 365;
+  const s = new Date(start + 'T00:00:00');
+  const e = new Date(end + 'T00:00:00');
+  const msPerDay = 24 * 60 * 60 * 1000;
+  const diffDays = Math.ceil((e - s) / msPerDay) + 1; // inclusive
+
+  if (diffDays <= maxDays) {{
+    return await fetchMetrics(start, end);
+  }}
+
+  const parts = [];
+  let curStart = new Date(s);
+  while (curStart <= e) {{
+    const curEnd = new Date(Math.min(e.getTime(), curStart.getTime() + (maxDays - 1) * msPerDay));
+    const partStart = curStart.toISOString().slice(0, 10);
+    const partEnd = curEnd.toISOString().slice(0, 10);
+    parts.push({{ start: partStart, end: partEnd }});
+    curStart = new Date(curEnd.getTime() + msPerDay);
+  }}
+
+  // Make requests sequentially and concatenate results
+  let combined = [];
+  for (const p of parts) {{
+    const chunk = await fetchMetrics(p.start, p.end);
+    combined = combined.concat(chunk);
+  }}
+
+  // Ensure globally sorted by ts
+  combined.sort((a, b) => (a.ts < b.ts ? -1 : a.ts > b.ts ? 1 : 0));
+  return combined;
+}}
+
 // Load metrics (cache-first)
 async function loadMetrics() {{
   const start = document.getElementById('startDate').value;
@@ -333,8 +368,8 @@ async function loadMetrics() {{
     if (events) {{
       updateStatus(`Loaded ${{events.length}} events from cache`, 'cached');
     }} else {{
-      // Fetch from API
-      events = await fetchMetrics(start, end);
+      // Fetch from API (split into <=365-day chunks if needed)
+      events = await fetchMetricsRange(start, end);
       await saveCache(start, end, events);
       updateStatus(`Loaded ${{events.length}} events from server`, 'loading');
     }}
