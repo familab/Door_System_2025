@@ -9,9 +9,9 @@ from unittest.mock import Mock, patch, MagicMock
 
 import base64
 
-import lib.server as server
-import lib.server.state as server_state
-from lib.server.server import RequestHandler, _health_server, start_health_server, stop_health_server
+import src_service.server as server
+import src_service.server.state as server_state
+from src_service.server.server import RequestHandler, _health_server, start_health_server, stop_health_server
 
 
 class TestServerStateFunctions(unittest.TestCase):
@@ -72,7 +72,7 @@ class TestServerStateFunctions(unittest.TestCase):
                 self.f_frsize = frsize
                 self.f_blocks = blocks
 
-        with patch('lib.server.state.config', {"HEALTH_CACHE_DURATION_MINUTES": 5}):
+        with patch('src_service.server.state.config', {"HEALTH_CACHE_DURATION_MINUTES": 5}):
             with patch.object(server_state.os, 'statvfs', return_value=FakeStat(50, 1024, 200), create=True):
                 d1 = server_state.get_disk_space()
 
@@ -96,7 +96,7 @@ class TestServerStateFunctions(unittest.TestCase):
         ai = [(2, None, None, None, ('1.2.3.4', 0))]
         bi = [(2, None, None, None, ('5.6.7.8', 0))]
 
-        with patch('lib.server.state.config', {"HEALTH_CACHE_DURATION_MINUTES": 5}):
+        with patch('src_service.server.state.config', {"HEALTH_CACHE_DURATION_MINUTES": 5}):
             with patch('socket.getaddrinfo', return_value=ai):
                 ips1 = server_state.get_local_ips()
             with patch('socket.getaddrinfo', return_value=bi):
@@ -119,7 +119,7 @@ class TestRequestHandler(unittest.TestCase):
         self.mock_client_address = ("127.0.0.1", 12345)
         self.mock_server = Mock()
         self.config_patcher = patch(
-            "lib.server.server.config",
+            "src_service.server.server.config",
             {
                 "HEALTH_SERVER_USERNAME": "testuser",
                 "HEALTH_SERVER_PASSWORD": "testpass",
@@ -127,7 +127,7 @@ class TestRequestHandler(unittest.TestCase):
             },
         )
         self.config_patcher.start()
-        self.logger_patcher = patch("lib.server.server.get_logger")
+        self.logger_patcher = patch("src_service.server.server.get_logger")
         self.mock_logger = self.logger_patcher.start()
         self.mock_logger.return_value = Mock()
 
@@ -160,7 +160,7 @@ class TestRequestHandler(unittest.TestCase):
     def test_health_page_public_no_auth(self):
         """GET /health without auth returns 200 (public route)."""
         handler = self._create_handler(path="/health")
-        with patch("lib.server.routes_public.get_current_log_file_path", return_value="/tmp/test.log"):
+        with patch("src_service.server.routes_public.get_current_log_file_path", return_value="/tmp/test.log"):
             handler.do_GET()
         body = handler.wfile.getvalue()
         self.assertIn(b"Door Controller Health", body)
@@ -169,7 +169,7 @@ class TestRequestHandler(unittest.TestCase):
     def test_health_page_shows_current_log_file(self):
         """Public health page shows the current log file path."""
         handler = self._create_handler(path="/health")
-        with patch("lib.server.routes_public.get_current_log_file_path", return_value="/tmp/test-2026-02-08.txt"):
+        with patch("src_service.server.routes_public.get_current_log_file_path", return_value="/tmp/test-2026-02-08.txt"):
             handler.do_GET()
         body = handler.wfile.getvalue()
         # Verify the health page renders. The presence of the "Current Log File" row is optional
@@ -184,7 +184,7 @@ class TestRequestHandler(unittest.TestCase):
         """Public health page shows last data connection timestamp."""
         handler = self._create_handler(path="/health")
         with patch(
-            "lib.server.routes_public.get_last_data_connection",
+            "src_service.server.routes_public.get_last_data_connection",
             return_value=datetime(2026, 2, 8, 1, 2, 3),
         ):
             handler.do_GET()
@@ -194,7 +194,7 @@ class TestRequestHandler(unittest.TestCase):
     def test_health_page_no_refresh_button(self):
         """Public health page must not show Refresh Badge List button."""
         handler = self._create_handler(path="/health")
-        with patch("lib.server.routes_public.get_current_log_file_path", return_value="/tmp/test.log"):
+        with patch("src_service.server.routes_public.get_current_log_file_path", return_value="/tmp/test.log"):
             handler.do_GET()
         body = handler.wfile.getvalue()
         self.assertNotIn(b"Refresh Badge List", body)
@@ -223,7 +223,7 @@ class TestRequestHandler(unittest.TestCase):
         import urllib.request
         import time
         import threading
-        import lib.server.routes_public as rp
+        import src_service.server.routes_public as rp
 
         hs = server.HealthServer(port=0, tls=True)
         hs.start()
@@ -254,7 +254,7 @@ class TestRequestHandler(unittest.TestCase):
                 except Exception as e:
                     results.append(e)
 
-            with patch('lib.server.routes_public.send_health_page', slow_send):
+            with patch('src_service.server.routes_public.send_health_page', slow_send):
                 t0 = time.time()
                 threads = [threading.Thread(target=do_request) for _ in range(2)]
                 for t in threads:
@@ -302,8 +302,8 @@ class TestRequestHandler(unittest.TestCase):
         credentials = base64.b64encode(b"testuser:testpass").decode("ascii")
         auth_header = f"Basic {credentials}"
         handler = self._create_handler(auth_header=auth_header, path="/admin")
-        with patch("lib.server.routes_admin.get_current_log_file_path", return_value="/tmp/sys.log"), patch(
-            "lib.server.routes_admin.get_current_action_log_file_path", return_value="/tmp/action.log"
+        with patch("src_service.server.routes_admin.get_current_log_file_path", return_value="/tmp/sys.log"), patch(
+            "src_service.server.routes_admin.get_current_action_log_file_path", return_value="/tmp/action.log"
         ):
             handler.do_GET()
         body = handler.wfile.getvalue()
@@ -332,7 +332,7 @@ class TestRequestHandler(unittest.TestCase):
             now = time.time()
             os.utime(csv_path, (now - 10, now - 10))
             # Patch config to point to our csv and set short interval
-            with patch('lib.server.routes_admin.config', {'CSV_FILE': csv_path, 'BADGE_REFRESH_INTERVAL_SECONDS': 60, 'HEALTH_REFRESH_INTERVAL': 60, 'LOG_FILE': config_file if (config_file := os.path.join(os.path.dirname(csv_path), 'door_controller.txt')) else ''}):
+            with patch('src_service.server.routes_admin.config', {'CSV_FILE': csv_path, 'BADGE_REFRESH_INTERVAL_SECONDS': 60, 'HEALTH_REFRESH_INTERVAL': 60, 'LOG_FILE': config_file if (config_file := os.path.join(os.path.dirname(csv_path), 'door_controller.txt')) else ''}):
                 handler = self._create_handler(auth_header=auth_header, path="/admin")
                 handler.do_GET()
                 body = handler.wfile.getvalue()
@@ -363,7 +363,7 @@ class TestRequestHandler(unittest.TestCase):
                     f.write("test\n")
 
             # Patch config to point to our tempdir base
-            with patch('lib.server.routes_admin.config', {'LOG_FILE': os.path.join(tmpdir, 'door_controller.txt'), 'ACTION_LOG_FILE': None}):
+            with patch('src_service.server.routes_admin.config', {'LOG_FILE': os.path.join(tmpdir, 'door_controller.txt'), 'ACTION_LOG_FILE': None}):
                 credentials = base64.b64encode(b"testuser:testpass").decode("ascii")
                 handler = self._create_handler(auth_header=f"Basic {credentials}", path="/admin/download/system-all")
                 handler.do_GET()
@@ -394,7 +394,7 @@ class TestRequestHandler(unittest.TestCase):
                     f.write("act\n")
 
             # Patch config to point to our tempdir base
-            with patch('lib.server.routes_admin.config', {'LOG_FILE': os.path.join(tmpdir, 'door_controller.txt'), 'ACTION_LOG_FILE': os.path.join(tmpdir, 'door_controller_action.txt')}):
+            with patch('src_service.server.routes_admin.config', {'LOG_FILE': os.path.join(tmpdir, 'door_controller.txt'), 'ACTION_LOG_FILE': os.path.join(tmpdir, 'door_controller_action.txt')}):
                 credentials = base64.b64encode(b"testuser:testpass").decode("ascii")
                 handler = self._create_handler(auth_header=f"Basic {credentials}", path="/admin/download/action-all")
                 handler.do_GET()
@@ -414,9 +414,9 @@ class TestRequestHandler(unittest.TestCase):
         credentials = base64.b64encode(b"testuser:testpass").decode("ascii")
         handler = self._create_handler(auth_header=f"Basic {credentials}", path="/api/refresh_badges")
         handler.command = "POST"
-        with patch("lib.server.routes_admin.check_rate_limit_badge_refresh", return_value=(True, "")), patch(
-            "lib.server.routes_admin.get_badge_refresh_callback", return_value=None
-        ), patch("lib.server.routes_admin.update_last_badge_download") as upd_mock:
+        with patch("src_service.server.routes_admin.check_rate_limit_badge_refresh", return_value=(True, "")), patch(
+            "src_service.server.routes_admin.get_badge_refresh_callback", return_value=None
+        ), patch("src_service.server.routes_admin.update_last_badge_download") as upd_mock:
             handler.do_POST()
             upd_mock.assert_called_with(success=False)
         body = handler.wfile.getvalue()
@@ -431,9 +431,9 @@ class TestRequestHandler(unittest.TestCase):
         handler.headers["Host"] = "example.local:8888"
         mock_cb = Mock(return_value=(True, "5 badges"))
         server.set_badge_refresh_callback(mock_cb)
-        with patch("lib.server.routes_admin.check_rate_limit_badge_refresh", return_value=(True, "")), patch(
-            "lib.server.routes_admin.update_last_badge_download"
-        ), patch("lib.server.routes_admin.record_action") as mock_record:
+        with patch("src_service.server.routes_admin.check_rate_limit_badge_refresh", return_value=(True, "")), patch(
+            "src_service.server.routes_admin.update_last_badge_download"
+        ), patch("src_service.server.routes_admin.record_action") as mock_record:
             handler.do_POST()
         mock_cb.assert_called_once()
         # Ensure record_action was called with badge_id set to the request host URL
@@ -451,7 +451,7 @@ class TestRequestHandler(unittest.TestCase):
         handler = self._create_handler(auth_header=f"Basic {credentials}", path="/api/refresh_badges")
         handler.command = "POST"
         with patch(
-            "lib.server.routes_admin.check_rate_limit_badge_refresh",
+            "src_service.server.routes_admin.check_rate_limit_badge_refresh",
             return_value=(False, "Rate limited. Try again in 300 seconds."),
         ):
             handler.do_POST()
@@ -475,8 +475,8 @@ class TestRequestHandler(unittest.TestCase):
         handler.headers["Host"] = "admin.local:8080"
         handler.headers["X-Forwarded-For"] = "203.0.113.55, 10.0.0.1"
         mock_toggle = MagicMock(return_value="unlocked")
-        with patch("lib.server.routes_admin.get_door_toggle_callback", return_value=mock_toggle):
-            with patch("lib.server.routes_admin.record_action") as mock_record:
+        with patch("src_service.server.routes_admin.get_door_toggle_callback", return_value=mock_toggle):
+            with patch("src_service.server.routes_admin.record_action") as mock_record:
                 handler.do_POST()
                 mock_toggle.assert_called()
                 # ensure toggle was called with the badge_id composed of host/client/public
@@ -513,7 +513,7 @@ class TestRequestHandler(unittest.TestCase):
         """Metrics page shows disabled reload button when rate-limited."""
         credentials = base64.b64encode(b"testuser:testpass").decode("ascii")
         auth_header = f"Basic {credentials}"
-        with patch("lib.server.routes_metrics.get_seconds_until_next_metrics_reload", return_value=120):
+        with patch("src_service.server.routes_metrics.get_seconds_until_next_metrics_reload", return_value=120):
             handler = self._create_handler(auth_header=auth_header, path="/metrics")
             handler.do_GET()
             body = handler.wfile.getvalue()
@@ -526,7 +526,7 @@ class TestRequestHandler(unittest.TestCase):
         auth_header = f"Basic {credentials}"
         handler = self._create_handler(auth_header=auth_header, path="/api/metrics?start=2026-02-08&end=2026-02-08")
         with patch(
-            "lib.server.routes_metrics.query_events_range",
+            "src_service.server.routes_metrics.query_events_range",
             return_value=[
                 {"ts": "2026-02-08 10:00:00", "event_type": "Badge Scan", "badge_id": "abc", "status": "Granted", "raw_message": "x"},
                 {"ts": "2026-02-08 10:15:00", "event_type": "Badge Scan", "badge_id": "def", "status": "Denied", "raw_message": "y"},
@@ -547,7 +547,7 @@ class TestRequestHandler(unittest.TestCase):
             path="/api/metrics?start=2026-02-08&end=2026-02-08&page=1&page_size=1",
         )
         with patch(
-            "lib.server.routes_metrics.query_events_range",
+            "src_service.server.routes_metrics.query_events_range",
             return_value=[
                 {"ts": "2026-02-08 10:00:00", "event_type": "Badge Scan", "badge_id": "abc", "status": "Granted", "raw_message": "x"},
                 {"ts": "2026-02-08 10:10:00", "event_type": "Manual Lock", "badge_id": None, "status": "Success", "raw_message": "y"},
@@ -565,7 +565,7 @@ class TestRequestHandler(unittest.TestCase):
         auth_header = f"Basic {credentials}"
         handler = self._create_handler(auth_header=auth_header, path="/api/metrics?start=2026-02-01&end=2026-02-01&format=json")
         with patch(
-            "lib.server.routes_metrics.query_events_range",
+            "src_service.server.routes_metrics.query_events_range",
             return_value=[{"ts": "2026-02-01 10:00:00", "event_type": "Manual Lock", "badge_id": None, "status": "Success", "raw_message": "x"}],
         ):
             handler.do_GET()
@@ -579,7 +579,7 @@ class TestRequestHandler(unittest.TestCase):
         auth_header = f"Basic {credentials}"
         handler = self._create_handler(auth_header=auth_header, path="/api/metrics?start=2026-02-01&end=2026-02-01&format=csv")
         with patch(
-            "lib.server.routes_metrics.query_events_range",
+            "src_service.server.routes_metrics.query_events_range",
             return_value=[{"ts": "2026-02-01 10:00:00", "event_type": "Manual Lock", "badge_id": None, "status": "Success", "raw_message": "x"}],
         ):
             handler.do_GET()
@@ -605,7 +605,7 @@ class TestRequestHandler(unittest.TestCase):
             tf.flush()
             temp_path = tf.name
         try:
-            with patch("lib.server.routes_admin.get_current_log_file_path", return_value=temp_path):
+            with patch("src_service.server.routes_admin.get_current_log_file_path", return_value=temp_path):
                 handler.do_GET()
             body = handler.wfile.getvalue()
             self.assertIn(b"log line 10", body)
@@ -621,9 +621,9 @@ class TestHealthServer(unittest.TestCase):
     """Test cases for HealthServer class and global start/stop."""
 
     def setUp(self):
-        self.config_patcher = patch("lib.server.server.config", {"HEALTH_SERVER_PORT": 8888})
+        self.config_patcher = patch("src_service.server.server.config", {"HEALTH_SERVER_PORT": 8888})
         self.config_patcher.start()
-        self.logger_patcher = patch("lib.server.server.get_logger")
+        self.logger_patcher = patch("src_service.server.server.get_logger")
         self.mock_logger = self.logger_patcher.start()
         self.mock_logger.return_value = Mock()
 
@@ -631,7 +631,7 @@ class TestHealthServer(unittest.TestCase):
         self.config_patcher.stop()
         self.logger_patcher.stop()
 
-    @patch("lib.server.server.HTTPServer")
+    @patch("src_service.server.server.HTTPServer")
     def test_server_start(self, mock_http_server):
         mock_http_server.return_value.serve_forever = lambda: time.sleep(0.1)
         srv = server.HealthServer(port=8888)
@@ -648,10 +648,10 @@ class TestHealthServer(unittest.TestCase):
         srv2 = server.HealthServer()
         self.assertEqual(srv2.port, 8888)
 
-    @patch("lib.server.server.HTTPServer")
+    @patch("src_service.server.server.HTTPServer")
     def test_global_start_stop(self, mock_http_server):
         mock_http_server.return_value.serve_forever = lambda: time.sleep(0.1)
-        import lib.server.server as server_module
+        import src_service.server.server as server_module
         server_module._health_server = None
         start_health_server(port=8888)
         self.assertIsNotNone(server_module._health_server)
@@ -667,7 +667,7 @@ class TestHealthServer(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             cert_path = os.path.join(td, "test_cert.pem")
             # Patch config to point to our cert path
-            with patch('lib.server.server.config', {'HEALTH_SERVER_PORT': 0, 'HEALTH_SERVER_CERT_FILE': cert_path, 'HEALTH_SERVER_TLS': True}):
+            with patch('src_service.server.server.config', {'HEALTH_SERVER_PORT': 0, 'HEALTH_SERVER_CERT_FILE': cert_path, 'HEALTH_SERVER_TLS': True}):
                 hs = server.HealthServer(port=0, tls=True, cert_file=cert_path)
                 # Start server which should generate the cert file
                 hs.start()

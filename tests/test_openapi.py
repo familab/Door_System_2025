@@ -1,7 +1,7 @@
 """Tests for OpenAPI spec generator."""
 import unittest
-from lib.openapi import get_openapi_spec
-from lib.version import __version__
+from src_service.openapi import get_openapi_spec
+from src_service.version import __version__
 
 
 class TestOpenAPISpec(unittest.TestCase):

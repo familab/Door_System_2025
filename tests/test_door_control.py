@@ -4,7 +4,7 @@ from unittest.mock import Mock, MagicMock, patch
 import threading
 import time
 from datetime import datetime
-import lib.door_control as door_control
+import src_service.door_control as door_control
 
 # Badge id used in unit tests for logable actions
 UNIT_TEST_BADGE = 'unit_test'
@@ -67,7 +67,7 @@ class TestDoorStatus(unittest.TestCase):
 
     def test_set_door_status_passes_badge_id(self):
         """Ensure set_door_status forwards badge_id to record_action when provided."""
-        with patch('lib.door_control.record_action') as mock_record:
+        with patch('src_service.door_control.record_action') as mock_record:
             door_control.set_door_status(True, badge_id='ABC123')
             mock_record.assert_called_with('Door OPEN/UNLOCKED', 'ABC123')
             mock_record.reset_mock()
@@ -89,7 +89,7 @@ class TestDoorController(unittest.TestCase):
         door_control._door_is_open = False
 
         # Patch logger
-        self.logger_patcher = patch('lib.door_control.get_logger')
+        self.logger_patcher = patch('src_service.door_control.get_logger')
         self.mock_logger = self.logger_patcher.start()
         self.mock_logger.return_value = Mock()
 
@@ -157,7 +157,7 @@ class TestDoorController(unittest.TestCase):
 
     def test_unlock_temporarily_passes_badge_id(self):
         """Ensure temporary unlock attributes open/close actions to the badge."""
-        with patch('lib.door_control.record_action') as mock_record:
+        with patch('src_service.door_control.record_action') as mock_record:
             self.controller.unlock_temporarily(duration=0.1, badge_id='abc123')
             # Opening should be recorded immediately
             mock_record.assert_any_call('Door OPEN/UNLOCKED', 'abc123')

@@ -6,7 +6,7 @@ import unittest
 from datetime import date
 from unittest.mock import patch
 
-from lib.metrics_storage import (
+from src_service.metrics_storage import (
     attach_databases,
     build_union_all_query,
     db_paths_in_range,
@@ -30,7 +30,7 @@ class TestMetricsStorage(unittest.TestCase):
                     "2026-02-01 10:00:02 - door_action - INFO - Door OPEN/UNLOCKED - Badge: abc - Status: Success\n"
                 )
 
-            with patch("lib.metrics_storage.config.get", side_effect=lambda key, default=None: tmpdir if key == "METRICS_DB_PATH" else default):
+            with patch("src_service.metrics_storage.config.get", side_effect=lambda key, default=None: tmpdir if key == "METRICS_DB_PATH" else default):
                 inserted = ingest_action_log_file(log_path)
                 self.assertEqual(inserted, 2)
                 db_path = get_month_db_path("2026-02", base_path=tmpdir)
@@ -65,7 +65,7 @@ class TestMetricsStorage(unittest.TestCase):
             conn.commit()
             conn.close()
 
-            with patch("lib.metrics_storage.config.get", side_effect=lambda key, default=None: tmpdir if key == "METRICS_DB_PATH" else default):
+            with patch("src_service.metrics_storage.config.get", side_effect=lambda key, default=None: tmpdir if key == "METRICS_DB_PATH" else default):
                 self.assertEqual(month_keys_in_range(date(2026, 1, 1), date(2026, 2, 28)), ["2026-01", "2026-02"])
                 paths = db_paths_in_range(date(2026, 1, 1), date(2026, 2, 28), base_path=tmpdir)
                 self.assertEqual(paths, [jan, feb])
@@ -89,7 +89,7 @@ class TestMetricsStorage(unittest.TestCase):
                 self.assertEqual(len(events), 2)
 
     def test_parse_action_message_normalization(self):
-        from lib.metrics_storage import parse_action_log_line
+        from src_service.metrics_storage import parse_action_log_line
         cases = [
             ("2026-02-09 12:00:00 - foo - INFO - Badge Scan - Badge: 12345 - Status: OK", "scan", "12345", "ok"),
             ("2026-02-09 12:01:00 - foo - INFO - Door CLOSED - Status: LOCKED", "close", None, "locked"),
@@ -106,14 +106,14 @@ class TestMetricsStorage(unittest.TestCase):
             self.assertEqual(parsed.get("status"), expect_status)
 
     def test_normalize_status_helper(self):
-        from lib.metrics_storage import normalize_status
+        from src_service.metrics_storage import normalize_status
         self.assertEqual(normalize_status("OK"), "ok")
         self.assertEqual(normalize_status(" Locked "), "locked")
         self.assertEqual(normalize_status(""), "unknown")
         self.assertEqual(normalize_status(None), "unknown")
 
     def test_normalize_event_type_helper(self):
-        from lib.metrics_storage import normalize_event_type
+        from src_service.metrics_storage import normalize_event_type
         cases = [
             ("Badge Scan", "scan"),
             ("Badge: 12345", "scan"),

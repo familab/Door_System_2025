@@ -1,5 +1,7 @@
 # Metrics and Door Toggle API
 
+[← Back to README](../README.md)
+
 This project includes authenticated admin controls and a metrics dashboard:
 
 - `POST /api/toggle` toggles the current lock state using the existing manual lock/unlock callbacks.
@@ -29,4 +31,4 @@ CREATE INDEX idx_events_event_type ON events(event_type);
 CREATE INDEX idx_events_badge_id ON events(badge_id);
 ```
 
-Cross-month queries use `ATTACH DATABASE` and `UNION ALL` helpers in `lib/metrics_storage.py`.
+Cross-month queries use `ATTACH DATABASE` and `UNION ALL` helpers in `src_service/metrics_storage.py`.
