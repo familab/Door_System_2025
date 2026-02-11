@@ -9,6 +9,7 @@ on:
   pull_request:
     paths:
       - 'diagram/**'
+      - '.github/workflows/validate_diagram.yml'
   workflow_dispatch: {}
 
 jobs:
@@ -67,15 +68,29 @@ jobs:
           set -e
           pinviz render diagram/door_controller.yaml -o diagram/door_controller.svg
 
-      - name: Render Per Device Diagrams
+      - name: Generate per-device YAMLs
         if: ${{ success() }}
         run: |
           set -e
-          python diagram/scripts/generate_per_device_diagrams.py --input diagram/door_controller.yaml --outdir diagram/per_device --render
+          # Generate per-device YAML files into diagram/generated/ (skip render for cross-platform compatibility)
+          python diagram/scripts/generate_per_device_diagrams.py --outdir diagram/generated --skip-render
 
-      - name: Upload generated SVG
+      - name: Render per-device SVGs
+        if: ${{ success() }}
+        run: |
+          set -e
+          mkdir -p diagram/generated/out
+          for f in diagram/generated/*.yaml; do
+            base=$(basename "$f" .yaml)
+            echo "Rendering $f -> diagram/generated/out/${base}.svg"
+            pinviz render "$f" -o "diagram/generated/out/${base}.svg" --show-legend
+          done
+
+      - name: Upload generated SVGs and diagram
         if: ${{ success() }}
         uses: actions/upload-artifact@v4
         with:
-          name: door-controller-diagram
-          path: diagram/**/*.svg
+          name: door-controller-diagrams
+          path: |
+            diagram/door_controller.svg
+            diagram/generated/out/**
