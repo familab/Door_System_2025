@@ -6,7 +6,7 @@ Python 3 Raspberry Pi Zero RFID door access control system with cloud-based badg
 
 *Code was made by Adam who knows VERY little of python and utilized ChatGPT to get it done. Please feel free to suggest more efficient changes*
 
-Hardware (wiring diagram coming soon):
+Hardware (see [wiring diagram](diagram/README.md)):
 - Raspberry Pi Zero W
 - PN532 RFID Reader
 - 12v Relay
