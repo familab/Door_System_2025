@@ -1,0 +1,100 @@
+name: Validate Diagram
+
+# Cancel in-progress workflows when a new workflow run is created. Good for PRs.
+concurrency:
+  group: "${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}"
+  cancel-in-progress: true
+
+env:
+  retention_days: 3
+
+on:
+  pull_request:
+    paths:
+      - 'diagram/**'
+      - '.github/workflows/validate_diagram.yml'
+  workflow_dispatch: {}
+
+jobs:
+  validate:
+    name: Validate diagram YAML files
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install diagram requirements
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f diagram/requirements.txt ]; then pip install -r diagram/requirements.txt; else echo "(no diagram/requirements.txt found)"; fi
+
+      - name: Import device templates (script)
+        run: |
+          python diagram/scripts/import_device_configs.py --validate-devices --patch-schemas
+
+      - name: Run PinViz validate (save output)
+        run: |
+          set +e
+          pinviz validate diagram/door_controller.yaml > pinviz.out 2>&1
+          PRC=$?
+          echo $PRC > pinviz.rc
+          set -e
+
+      - name: Combine PinViz report and determine result
+        id: combine
+        run: |
+          echo "PinViz Validation Report" > validation-report.txt
+          echo "========================" >> validation-report.txt
+          if [ -f pinviz.out ]; then cat pinviz.out >> validation-report.txt; else echo "(no pinviz output)" >> validation-report.txt; fi
+          echo "" >> validation-report.txt
+          echo "Exit codes:" >> validation-report.txt
+          PRC=$(cat pinviz.rc 2>/dev/null || echo 0)
+          echo "pinviz: $PRC" >> validation-report.txt
+          if [ "$PRC" != "0" ]; then
+            echo "Validation failed" >> validation-report.txt
+            cat validation-report.txt
+            exit 1
+          else
+            echo "Validation succeeded" >> validation-report.txt
+            cat validation-report.txt
+          fi
+
+      - name: Render diagram SVG
+        if: ${{ success() }}
+        run: |
+          set -e
+          pinviz render diagram/door_controller.yaml -o diagram/door_controller.svg
+
+      - name: Generate per-device YAMLs
+        if: ${{ success() }}
+        run: |
+          set -e
+          # Generate per-device YAML files into diagram/generated/ (skip render for cross-platform compatibility)
+          python diagram/scripts/generate_per_device_diagrams.py --outdir diagram/generated --skip-render
+
+      - name: Render per-device SVGs
+        if: ${{ success() }}
+        run: |
+          set -e
+          mkdir -p diagram/generated/out
+          for f in diagram/generated/*.yaml; do
+            base=$(basename "$f" .yaml)
+            echo "Rendering $f -> diagram/generated/out/${base}.svg"
+            pinviz render "$f" -o "diagram/generated/out/${base}.svg" --show-legend
+          done
+
+      - name: Upload generated SVGs and diagram
+        if: ${{ success() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: door-controller-diagrams
+          path: |
+            diagram/door_controller.svg
+            diagram/generated/out/**
+          retention-days: ${{ env.retention_days }}
