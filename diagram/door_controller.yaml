@@ -1,5 +1,14 @@
 title: "FamiLAB Door Controller - Raspberry Pi Zero W Wiring"
-# Pi Zero W shares the same 40-pin GPIO header as Pi 4; pinviz has no Pi Zero template
+# Wiring diagram for the FamiLAB Door Controller. Components:
+# - Raspberry Pi Zero W (40-pin header)
+# - PN532 RFID Reader (I2C)
+# - 12V Relay module (controlled by GPIO)
+# - 12V → 5V buck converter
+# - 12V door latch (powered via relay)
+# - 12V power supply
+# - 2 x Push buttons (unlock, lock)
+# - 3D printed enclosure (mechanical)
+# Pi Zero W shares the same 40-pin GPIO header as Pi 4; pinviz uses the `raspberry_pi_4` board template
 board: "raspberry_pi_4"
 
 devices:
@@ -59,3 +68,30 @@ connections:
   - board_pin: 20      # GND
     device: "Lock Button"
     device_pin: "GND"
+
+# Notes (moved to comments because top-level 'notes' is not supported by PinViz schema):
+# CONFIG:
+#   RELAY_PIN: 17  # Relay control pin for the door latch
+#   BUTTON_UNLOCK_PIN: 27  # Unlock button pin
+#   BUTTON_LOCK_PIN: 22  # Lock button pin
+#
+# EXAMPLE CODE:
+#   import RPi.GPIO as GPIO
+#   GPIO.setmode(GPIO.BCM)
+#   GPIO.setup(RELAY_PIN, GPIO.OUT)
+#   GPIO.setup(BUTTON_UNLOCK_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+#   GPIO.setup(BUTTON_LOCK_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+#
+#   # Initially, keep the relay off (door locked)
+#   GPIO.output(RELAY_PIN, GPIO.LOW)
+#
+#   import busio, board
+#   from adafruit_pn532.i2c import PN532_I2C
+#   i2c = busio.I2C(board.SCL, board.SDA)
+#   pn532 = PN532_I2C(i2c, debug=False)
+#   pn532.SAM_configuration()
+#   logger.info("PN532 RFID reader initialized")
+#
+# POWER NOTES:
+#   - Relay switches 12V from the power supply to the door latch.
+#   - Buck converter can supply 5V/3.3V as needed for peripherals.

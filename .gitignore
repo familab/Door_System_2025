@@ -69,3 +69,6 @@ door_controller.log*
 # Version files
 version-*.txt
 logs
+pinviz.out
+pinviz.rc
+validation-report.txt
