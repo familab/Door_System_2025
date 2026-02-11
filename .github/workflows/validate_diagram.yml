@@ -33,27 +33,9 @@ jobs:
           python -m pip install --upgrade pip
           if [ -f diagram/requirements.txt ]; then pip install -r diagram/requirements.txt; else echo "(no diagram/requirements.txt found)"; fi
 
-      - name: Install local device templates into PinViz
+      - name: Import device templates (script)
         run: |
-          python - <<'PY'
-          import shutil, pathlib
-          try:
-              src = pathlib.Path('diagram/device_configs')
-              if src.exists():
-                  import pinviz
-                  dest = pathlib.Path(pinviz.__file__).parent / 'device_configs'
-                  dest.mkdir(parents=True, exist_ok=True)
-                  count = 0
-                  for p in src.rglob('*.json'):
-                      shutil.copy(p, dest / p.name)
-                      count += 1
-                  print(f"Copied {count} device templates to {dest}")
-              else:
-                  print("No device_configs found to copy")
-          except Exception as e:
-              print('Failed to copy device templates:', e)
-              raise
-          PY
+          python diagram/scripts/import_device_configs.py --validate-devices
 
       - name: Run PinViz validate (save output)
         run: |

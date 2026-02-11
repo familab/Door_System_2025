@@ -111,3 +111,21 @@ If you'd like, I can:
 - Revert the local patch and keep everything as inline `pins` devices instead (if you prefer not to modify venv package files).
 
 Which next step do you want? Reply with **PR** (prepare a PR) or **revert** (keep inline devices).
+
+---
+
+## Importing templates on a fresh machine (Windows / macOS / Linux)
+
+The repository includes a helper script that automates copying device JSONs into the installed PinViz package and optionally validating them. This is convenient for fresh setups and CI.
+
+**Example:**
+
+```bash
+# Copy JSONs and validate templates
+python diagram/scripts/import_device_configs.py --validate-devices
+
+# If necessary, also enable the temporary schemas auto-discovery (CI use only)
+python diagram/scripts/import_device_configs.py --validate-devices --patch-schemas
+
+# The script supports --dry-run for testing without writing files
+python diagram/scripts/import_device_configs.py --dry-run
