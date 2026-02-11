@@ -159,7 +159,7 @@ class TestLoggingUtils(unittest.TestCase):
             log_file = f.name
 
         try:
-            with patch('lib.logging_utils.config', {"LOG_FILE": log_file}):
+            with patch('src_service.logging_utils.config', {"LOG_FILE": log_file}):
                 size = logging_utils.get_log_file_size()
                 self.assertGreater(size, 0)
         finally:
@@ -176,7 +176,7 @@ class TestLoggingUtils(unittest.TestCase):
             log_file = f.name
 
         try:
-            with patch('lib.logging_utils.config', {"LOG_FILE": log_file, "HEALTH_CACHE_DURATION_MINUTES": 5}):
+            with patch('src_service.logging_utils.config', {"LOG_FILE": log_file, "HEALTH_CACHE_DURATION_MINUTES": 5}):
                 size1 = logging_utils.get_log_file_size()
                 self.assertGreater(size1, 0)
 
@@ -527,7 +527,7 @@ class TestLoggingUtils(unittest.TestCase):
 
             config.config["LOG_FILE"] = os.path.join(tmpdir, "door_controller.txt")
             config.config["LOG_RETENTION_DAYS"] = 7
-            with patch("lib.logging_utils.ingest_action_log_file") as ingest_mock:
+            with patch("src_service.logging_utils.ingest_action_log_file") as ingest_mock:
                 logging_utils.cleanup_old_logs(retention_days=7)
                 ingest_mock.assert_called_once_with(action_path)
             self.assertFalse(os.path.exists(action_path))

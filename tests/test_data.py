@@ -55,7 +55,7 @@ class TestGoogleSheetsData(unittest.TestCase):
             csv_path = f.name
 
         try:
-            with patch("lib.data.update_last_data_connection") as data_conn_mock:
+            with patch("src_service.data.update_last_data_connection") as data_conn_mock:
                 success, message = data_client.refresh_badge_list_to_csv(csv_path)
                 data_conn_mock.assert_called_once()
             self.assertTrue(success)
@@ -98,7 +98,7 @@ class TestGoogleSheetsData(unittest.TestCase):
         data_client._connected = True
         data_client.sheet = MagicMock()
         data_client.sheet.col_values.return_value = ["ABC", "DEF"]
-        with patch("lib.data.update_last_data_connection") as data_conn_mock:
+        with patch("src_service.data.update_last_data_connection") as data_conn_mock:
             self.assertTrue(data_client.check_uid_in_sheet("abc"))
             self.assertFalse(data_client.check_uid_in_sheet("zzz"))
             self.assertGreaterEqual(data_conn_mock.call_count, 1)
@@ -108,7 +108,7 @@ class TestGoogleSheetsData(unittest.TestCase):
         data_client._connected = True
         data_client.log_sheet = MagicMock()
 
-        with patch("lib.data.update_last_google_log_success") as success_mock:
+        with patch("src_service.data.update_last_google_log_success") as success_mock:
             result = data_client.log_access("ABC123", "Granted")
 
         self.assertTrue(result)
@@ -121,7 +121,7 @@ class TestGoogleSheetsData(unittest.TestCase):
         data_client.log_sheet = MagicMock()
         data_client.log_sheet.append_row.side_effect = Exception("boom")
 
-        with patch("lib.data.update_last_google_error") as err_mock:
+        with patch("src_service.data.update_last_google_error") as err_mock:
             result = data_client.log_access("ABC123", "Granted")
 
         self.assertFalse(result)

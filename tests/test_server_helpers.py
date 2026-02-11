@@ -1,4 +1,4 @@
-"""Unit tests for src_serviceserver.helpers utilities."""
+"""Unit tests for `src_service.server.helpers` utilities."""
 import unittest
 from types import SimpleNamespace
 

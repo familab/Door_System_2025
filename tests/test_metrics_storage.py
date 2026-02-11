@@ -30,7 +30,7 @@ class TestMetricsStorage(unittest.TestCase):
                     "2026-02-01 10:00:02 - door_action - INFO - Door OPEN/UNLOCKED - Badge: abc - Status: Success\n"
                 )
 
-            with patch("lib.metrics_storage.config.get", side_effect=lambda key, default=None: tmpdir if key == "METRICS_DB_PATH" else default):
+            with patch("src_service.metrics_storage.config.get", side_effect=lambda key, default=None: tmpdir if key == "METRICS_DB_PATH" else default):
                 inserted = ingest_action_log_file(log_path)
                 self.assertEqual(inserted, 2)
                 db_path = get_month_db_path("2026-02", base_path=tmpdir)
@@ -65,7 +65,7 @@ class TestMetricsStorage(unittest.TestCase):
             conn.commit()
             conn.close()
 
-            with patch("lib.metrics_storage.config.get", side_effect=lambda key, default=None: tmpdir if key == "METRICS_DB_PATH" else default):
+            with patch("src_service.metrics_storage.config.get", side_effect=lambda key, default=None: tmpdir if key == "METRICS_DB_PATH" else default):
                 self.assertEqual(month_keys_in_range(date(2026, 1, 1), date(2026, 2, 28)), ["2026-01", "2026-02"])
                 paths = db_paths_in_range(date(2026, 1, 1), date(2026, 2, 28), base_path=tmpdir)
                 self.assertEqual(paths, [jan, feb])
