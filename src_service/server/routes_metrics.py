@@ -568,6 +568,9 @@ function renderDashboard(events) {{
   renderLatencyHistogram(events);
   renderDoorLeftOpenTooLong(events);
   renderHourlyHeatmap(events);
+  renderHourlyActivityByDate(events);
+  renderMonthlySummary(events);
+  renderMonthlyBadgeActivity(events);
   renderTimeline(events);
 }}
 
@@ -898,6 +901,72 @@ function histogramBins(values, bins=10) {{
   return {{labels: blabels, data: bcounts}};
 }}
 
+// Compute hourly activity grouped by date (YYYY-MM-DD -> hour -> count)
+function computeHourlyData(events) {{
+  const byDateHour = {{}};
+  events.forEach(e => {{
+    const date = e.ts.split(' ')[0]; // YYYY-MM-DD
+    const hour = new Date(e.ts).getHours();
+    if (!byDateHour[date]) byDateHour[date] = {{}};
+    byDateHour[date][hour] = (byDateHour[date][hour] || 0) + 1;
+  }});
+  // Fill missing hours with 0
+  Object.keys(byDateHour).forEach(date => {{
+    for (let h = 0; h < 24; h++) {{
+      if (byDateHour[date][h] === undefined) byDateHour[date][h] = 0;
+    }}
+  }});
+  return byDateHour;
+}}
+
+// Compute monthly activity (YYYY-MM -> count)
+function computeMonthlyData(events) {{
+  const byMonth = {{}};
+  events.forEach(e => {{
+    const month = e.ts.substring(0, 7); // YYYY-MM
+    byMonth[month] = (byMonth[month] || 0) + 1;
+  }});
+  return Object.keys(byMonth).sort().map(m => ({{ month: m, count: byMonth[m] }}));
+}}
+
+// Compute monthly badge activity (YYYY-MM -> badge_id -> count)
+function computeMonthlyBadgeActivity(events) {{
+  const byMonthBadge = {{}};
+  events.forEach(e => {{
+    const month = e.ts.substring(0, 7);
+    const badge = e.badge_id || '(no badge)';
+    if (!byMonthBadge[month]) byMonthBadge[month] = {{}};
+    byMonthBadge[month][badge] = (byMonthBadge[month][badge] || 0) + 1;
+  }});
+  return byMonthBadge;
+}}
+
+// Find most active badge in a month
+function findMostActiveBadge(badgeCounts) {{
+  let maxBadge = null;
+  let maxCount = 0;
+  Object.entries(badgeCounts).forEach(([badge, cnt]) => {{
+    if (cnt > maxCount) {{
+      maxCount = cnt;
+      maxBadge = badge;
+    }}
+  }});
+  return {{ badge: maxBadge, count: maxCount }};
+}}
+
+// Find least active badge in a month (non-zero)
+function findLeastActiveBadge(badgeCounts) {{
+  let minBadge = null;
+  let minCount = Infinity;
+  Object.entries(badgeCounts).forEach(([badge, cnt]) => {{
+    if (cnt > 0 && cnt < minCount) {{
+      minCount = cnt;
+      minBadge = badge;
+    }}
+  }});
+  return minCount === Infinity ? {{ badge: null, count: 0 }} : {{ badge: minBadge, count: minCount }};
+}}
+
 // Render histogram for durations (minutes)
 function renderDurationHistogram(events) {{
   const includeNoBadge = document.getElementById('chkIncludeNoBadge')?.checked || false;
@@ -934,6 +1003,108 @@ function renderLatencyHistogram(events) {{
     if (!card) {{ card = document.createElement('div'); card.className = 'card'; card.id = 'card-'+id; document.getElementById('chartsGrid').appendChild(card); }}
     card.innerHTML = `<h2>Latency Percentiles</h2><p>p50: ${{p50}}s, p95: ${{p95}}s</p>`;
   }}
+}}
+
+// Render hourly activity by date
+function renderHourlyActivityByDate(events) {{
+  const includeNoBadge = document.getElementById('chkIncludeNoBadge')?.checked || false;
+  const excludeUnitTest = document.getElementById('chkExcludeUnitTest')?.checked || false;
+  const filtered = events.filter(e => {{
+    const badge = e.badge_id || '';
+    if (excludeUnitTest && badge === 'unit_test') return false;
+    if (!badge && !includeNoBadge) return false;
+    return true;
+  }});
+  const byDateHour = computeHourlyData(filtered);
+  const dates = Object.keys(byDateHour).sort();
+
+  // Create a line chart with one line per date (limit to last 7 days for readability)
+  const recentDates = dates.slice(-7);
+  const hourLabels = Array.from({{length: 24}}, (_, i) => i.toString());
+  const datasets = recentDates.map((date, idx) => {{
+    const colors = ['#4ec9b0', '#9cdcfe', '#c586c0', '#dcdcaa', '#ce9178', '#b5cea8', '#569cd6'];
+    const data = hourLabels.map(h => byDateHour[date][parseInt(h, 10)] || 0);
+    return {{
+      label: date,
+      data,
+      borderColor: colors[idx % colors.length],
+      backgroundColor: 'transparent',
+      tension: 0.3
+    }};
+  }});
+
+  const id = 'hourly-by-date';
+  const cardId = 'card-' + id;
+  let card = document.getElementById(cardId);
+  if (!card) {{
+    card = document.createElement('div');
+    card.className = 'card';
+    card.id = cardId;
+    document.getElementById('chartsGrid').appendChild(card);
+  }}
+  card.innerHTML = `<h2>Hourly Activity (Last 7 Days)</h2><canvas id="chart-${{id}}"></canvas>`;
+
+  if (charts[id]) charts[id].destroy();
+  const canvas = document.getElementById('chart-' + id);
+  charts[id] = new Chart(canvas, {{
+    type: 'line',
+    data: {{ labels: hourLabels, datasets }},
+    options: {{ responsive: true, maintainAspectRatio: false }}
+  }});
+  canvas.style.height = '260px';
+}}
+
+// Render monthly summary
+function renderMonthlySummary(events) {{
+  const includeNoBadge = document.getElementById('chkIncludeNoBadge')?.checked || false;
+  const excludeUnitTest = document.getElementById('chkExcludeUnitTest')?.checked || false;
+  const filtered = events.filter(e => {{
+    const badge = e.badge_id || '';
+    if (excludeUnitTest && badge === 'unit_test') return false;
+    if (!badge && !includeNoBadge) return false;
+    return true;
+  }});
+  const monthlyData = computeMonthlyData(filtered);
+  const labels = monthlyData.map(m => m.month);
+  const data = monthlyData.map(m => m.count);
+  createChart('monthly-summary', 'Monthly Activity Summary', 'bar', labels, data);
+}}
+
+// Render monthly badge activity (most/least active badges)
+function renderMonthlyBadgeActivity(events) {{
+  const includeNoBadge = document.getElementById('chkIncludeNoBadge')?.checked || false;
+  const excludeUnitTest = document.getElementById('chkExcludeUnitTest')?.checked || false;
+  const filtered = events.filter(e => {{
+    const badge = e.badge_id || '';
+    if (excludeUnitTest && badge === 'unit_test') return false;
+    if (!badge && !includeNoBadge) return false;
+    return true;
+  }});
+  const monthlyBadge = computeMonthlyBadgeActivity(filtered);
+  const months = Object.keys(monthlyBadge).sort();
+
+  const id = 'monthly-badge-activity';
+  let card = document.getElementById('card-' + id);
+  if (!card) {{
+    card = document.createElement('div');
+    card.className = 'card';
+    card.id = 'card-' + id;
+    document.getElementById('chartsGrid').appendChild(card);
+  }}
+
+  let html = '<h2>Monthly Badge Activity</h2>';
+  if (!months.length) {{
+    html += '<p>No data available</p>';
+  }} else {{
+    html += '<div style="max-height:320px;overflow:auto;"><table><thead><tr><th>Month</th><th>Most Active Badge</th><th>Count</th><th>Least Active Badge</th><th>Count</th></tr></thead><tbody>';
+    months.forEach(month => {{
+      const most = findMostActiveBadge(monthlyBadge[month]);
+      const least = findLeastActiveBadge(monthlyBadge[month]);
+      html += `<tr><td>${{month}}</td><td>${{most.badge || 'N/A'}}</td><td>${{most.count}}</td><td>${{least.badge || 'N/A'}}</td><td>${{least.count}}</td></tr>`;
+    }});
+    html += '</tbody></table></div>';
+  }}
+  card.innerHTML = html;
 }}
 
 // Export too-long-open list as CSV
