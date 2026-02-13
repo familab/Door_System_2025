@@ -568,6 +568,15 @@ function renderDashboard(events) {{
   renderLatencyHistogram(events);
   renderDoorLeftOpenTooLong(events);
   renderHourlyHeatmap(events);
+  renderHourlyActivityByDate(events);
+  renderMonthlySummary(events);
+  renderMonthlyBadgeActivity(events);
+  renderLastSeenActivity(events);
+  renderUserMonthHeatmap(events);
+  renderActiveUserCount(events);
+  renderInactiveUserTrend(events);
+  renderUserActivityDistribution(events);
+  renderChurnDetection(events);
   renderTimeline(events);
 }}
 
@@ -883,6 +892,45 @@ function closeHeatmapModal() {{
   if (overlay) overlay.classList.remove('show');
 }}
 
+// Create modal for user-month heatmap (lazy)
+function createUserMonthModal() {{
+  if (document.getElementById('userMonthModal')) return;
+  const overlay = document.createElement('div');
+  overlay.id = 'userMonthModal';
+  overlay.className = 'modal-overlay';
+  overlay.innerHTML = `<div class="modal-content"><button class="modal-close" id="userMonthModalClose">Close</button><div id="userMonthModalBody"></div></div>`;
+  overlay.addEventListener('click', (e) => {{ if (e.target === overlay) closeUserMonthModal(); }});
+  document.body.appendChild(overlay);
+  document.getElementById('userMonthModalClose').addEventListener('click', closeUserMonthModal);
+}}
+
+// Open modal and populate with events for the selected user/month
+function openUserMonthModal(user, month) {{
+  createUserMonthModal();
+  const overlay = document.getElementById('userMonthModal');
+  const body = document.getElementById('userMonthModalBody');
+  const evs = (latestEvents || []).filter(e => {{
+    const eventMonth = e.ts.substring(0, 7);
+    const badge = e.badge_id || '(no badge)';
+    return badge === user && eventMonth === month;
+  }});
+  let html = `<h3>Events for ${{user}} in ${{month}} (${{evs.length}})</h3>`;
+  if (!evs.length) {{ html += `<p>No events</p>`; }} else {{
+    html += `<table><thead><tr><th>Time</th><th>Event</th><th>Status</th></tr></thead><tbody>`;
+    evs.forEach(e => {{
+      html += `<tr><td>${{e.ts}}</td><td>${{e.event_type}}</td><td>${{e.status || ''}}</td></tr>`;
+    }});
+    html += `</tbody></table>`;
+  }}
+  body.innerHTML = html;
+  overlay.classList.add('show');
+}}
+
+function closeUserMonthModal() {{
+  const overlay = document.getElementById('userMonthModal');
+  if (overlay) overlay.classList.remove('show');
+}}
+
 // Histogram helper (bins numeric array into N bins)
 function histogramBins(values, bins=10) {{
   if (!values || !values.length) return {{labels: [], data: []}};
@@ -896,6 +944,72 @@ function histogramBins(values, bins=10) {{
     bcounts[idx]++;
   }});
   return {{labels: blabels, data: bcounts}};
+}}
+
+// Compute hourly activity grouped by date (YYYY-MM-DD -> hour -> count)
+function computeHourlyData(events) {{
+  const byDateHour = {{}};
+  events.forEach(e => {{
+    const date = e.ts.split(' ')[0]; // YYYY-MM-DD
+    const hour = new Date(e.ts).getHours();
+    if (!byDateHour[date]) byDateHour[date] = {{}};
+    byDateHour[date][hour] = (byDateHour[date][hour] || 0) + 1;
+  }});
+  // Fill missing hours with 0
+  Object.keys(byDateHour).forEach(date => {{
+    for (let h = 0; h < 24; h++) {{
+      if (byDateHour[date][h] === undefined) byDateHour[date][h] = 0;
+    }}
+  }});
+  return byDateHour;
+}}
+
+// Compute monthly activity (YYYY-MM -> count)
+function computeMonthlyData(events) {{
+  const byMonth = {{}};
+  events.forEach(e => {{
+    const month = e.ts.substring(0, 7); // YYYY-MM
+    byMonth[month] = (byMonth[month] || 0) + 1;
+  }});
+  return Object.keys(byMonth).sort().map(m => ({{ month: m, count: byMonth[m] }}));
+}}
+
+// Compute monthly badge activity (YYYY-MM -> badge_id -> count)
+function computeMonthlyBadgeActivity(events) {{
+  const byMonthBadge = {{}};
+  events.forEach(e => {{
+    const month = e.ts.substring(0, 7);
+    const badge = e.badge_id || '(no badge)';
+    if (!byMonthBadge[month]) byMonthBadge[month] = {{}};
+    byMonthBadge[month][badge] = (byMonthBadge[month][badge] || 0) + 1;
+  }});
+  return byMonthBadge;
+}}
+
+// Find most active badge in a month
+function findMostActiveBadge(badgeCounts) {{
+  let maxBadge = null;
+  let maxCount = 0;
+  Object.entries(badgeCounts).forEach(([badge, cnt]) => {{
+    if (cnt > maxCount) {{
+      maxCount = cnt;
+      maxBadge = badge;
+    }}
+  }});
+  return {{ badge: maxBadge, count: maxCount }};
+}}
+
+// Find least active badge in a month (non-zero)
+function findLeastActiveBadge(badgeCounts) {{
+  let minBadge = null;
+  let minCount = Infinity;
+  Object.entries(badgeCounts).forEach(([badge, cnt]) => {{
+    if (cnt > 0 && cnt < minCount) {{
+      minCount = cnt;
+      minBadge = badge;
+    }}
+  }});
+  return minCount === Infinity ? {{ badge: null, count: 0 }} : {{ badge: minBadge, count: minCount }};
 }}
 
 // Render histogram for durations (minutes)
@@ -934,6 +1048,474 @@ function renderLatencyHistogram(events) {{
     if (!card) {{ card = document.createElement('div'); card.className = 'card'; card.id = 'card-'+id; document.getElementById('chartsGrid').appendChild(card); }}
     card.innerHTML = `<h2>Latency Percentiles</h2><p>p50: ${{p50}}s, p95: ${{p95}}s</p>`;
   }}
+}}
+
+// Render hourly activity by date
+function renderHourlyActivityByDate(events) {{
+  const includeNoBadge = document.getElementById('chkIncludeNoBadge')?.checked || false;
+  const excludeUnitTest = document.getElementById('chkExcludeUnitTest')?.checked || false;
+  const filtered = events.filter(e => {{
+    const badge = e.badge_id || '';
+    if (excludeUnitTest && badge === 'unit_test') return false;
+    if (!badge && !includeNoBadge) return false;
+    return true;
+  }});
+  const byDateHour = computeHourlyData(filtered);
+  const dates = Object.keys(byDateHour).sort();
+
+  // Create a line chart with one line per date (limit to last 7 days for readability)
+  const recentDates = dates.slice(-7);
+  const hourLabels = Array.from({{length: 24}}, (_, i) => i.toString());
+  const datasets = recentDates.map((date, idx) => {{
+    const colors = ['#4ec9b0', '#9cdcfe', '#c586c0', '#dcdcaa', '#ce9178', '#b5cea8', '#569cd6'];
+    const data = hourLabels.map(h => byDateHour[date][parseInt(h, 10)] || 0);
+    return {{
+      label: date,
+      data,
+      borderColor: colors[idx % colors.length],
+      backgroundColor: 'transparent',
+      tension: 0.3
+    }};
+  }});
+
+  const id = 'hourly-by-date';
+  const cardId = 'card-' + id;
+  let card = document.getElementById(cardId);
+  if (!card) {{
+    card = document.createElement('div');
+    card.className = 'card';
+    card.id = cardId;
+    document.getElementById('chartsGrid').appendChild(card);
+  }}
+  card.innerHTML = `<h2>Hourly Activity (Last 7 Days)</h2><canvas id="chart-${{id}}"></canvas>`;
+
+  if (charts[id]) charts[id].destroy();
+  const canvas = document.getElementById('chart-' + id);
+  charts[id] = new Chart(canvas, {{
+    type: 'line',
+    data: {{ labels: hourLabels, datasets }},
+    options: {{ responsive: true, maintainAspectRatio: false }}
+  }});
+  canvas.style.height = '260px';
+}}
+
+// Render monthly summary
+function renderMonthlySummary(events) {{
+  const includeNoBadge = document.getElementById('chkIncludeNoBadge')?.checked || false;
+  const excludeUnitTest = document.getElementById('chkExcludeUnitTest')?.checked || false;
+  const filtered = events.filter(e => {{
+    const badge = e.badge_id || '';
+    if (excludeUnitTest && badge === 'unit_test') return false;
+    if (!badge && !includeNoBadge) return false;
+    return true;
+  }});
+  const monthlyData = computeMonthlyData(filtered);
+  const labels = monthlyData.map(m => m.month);
+  const data = monthlyData.map(m => m.count);
+  createChart('monthly-summary', 'Monthly Activity Summary', 'bar', labels, data);
+}}
+
+// Render monthly badge activity (most/least active badges)
+function renderMonthlyBadgeActivity(events) {{
+  const includeNoBadge = document.getElementById('chkIncludeNoBadge')?.checked || false;
+  const excludeUnitTest = document.getElementById('chkExcludeUnitTest')?.checked || false;
+  const filtered = events.filter(e => {{
+    const badge = e.badge_id || '';
+    if (excludeUnitTest && badge === 'unit_test') return false;
+    if (!badge && !includeNoBadge) return false;
+    return true;
+  }});
+  const monthlyBadge = computeMonthlyBadgeActivity(filtered);
+  const months = Object.keys(monthlyBadge).sort();
+
+  const id = 'monthly-badge-activity';
+  let card = document.getElementById('card-' + id);
+  if (!card) {{
+    card = document.createElement('div');
+    card.className = 'card';
+    card.id = 'card-' + id;
+    document.getElementById('chartsGrid').appendChild(card);
+  }}
+
+  let html = '<h2>Monthly Badge Activity</h2>';
+  if (!months.length) {{
+    html += '<p>No data available</p>';
+  }} else {{
+    html += '<div style="max-height:320px;overflow:auto;"><table><thead><tr><th>Month</th><th>Most Active Badge</th><th>Count</th><th>Least Active Badge</th><th>Count</th></tr></thead><tbody>';
+    months.forEach(month => {{
+      const most = findMostActiveBadge(monthlyBadge[month]);
+      const least = findLeastActiveBadge(monthlyBadge[month]);
+      html += `<tr><td>${{month}}</td><td>${{most.badge || 'N/A'}}</td><td>${{most.count}}</td><td>${{least.badge || 'N/A'}}</td><td>${{least.count}}</td></tr>`;
+    }});
+    html += '</tbody></table></div>';
+  }}
+  card.innerHTML = html;
+}}
+
+// Compute last scan date for each user
+function computeLastSeen(events) {{
+  const lastSeen = {{}};
+  events.forEach(e => {{
+    const badge = e.badge_id || '(no badge)';
+    const ts = new Date(e.ts);
+    if (!lastSeen[badge] || ts > lastSeen[badge]) {{
+      lastSeen[badge] = ts;
+    }}
+  }});
+  return lastSeen;
+}}
+
+// Compute user scan counts per month
+function computeUserMonthScans(events) {{
+  const userMonth = {{}};
+  events.forEach(e => {{
+    const badge = e.badge_id || '(no badge)';
+    const month = e.ts.substring(0, 7);
+    if (!userMonth[badge]) userMonth[badge] = {{}};
+    userMonth[badge][month] = (userMonth[badge][month] || 0) + 1;
+  }});
+  return userMonth;
+}}
+
+// Compute unique users per time period
+function computeUniqueUsersOverTime(events, granularity = 'day') {{
+  const usersPerPeriod = {{}};
+  events.forEach(e => {{
+    const badge = e.badge_id || '(no badge)';
+    let period;
+    if (granularity === 'day') {{
+      period = e.ts.substring(0, 10);
+    }} else if (granularity === 'week') {{
+      const d = new Date(e.ts);
+      const startOfYear = new Date(d.getFullYear(), 0, 1);
+      const weekNum = Math.ceil(((d - startOfYear) / 86400000 + startOfYear.getDay() + 1) / 7);
+      period = `${{d.getFullYear()}}-W${{weekNum.toString().padStart(2, '0')}}`;
+    }} else {{ // month
+      period = e.ts.substring(0, 7);
+    }}
+    if (!usersPerPeriod[period]) usersPerPeriod[period] = new Set();
+    usersPerPeriod[period].add(badge);
+  }});
+  return Object.keys(usersPerPeriod).sort().map(p => ({{ period: p, count: usersPerPeriod[p].size }}));
+}}
+
+// Compute inactive user count (users who haven't scanned in X days)
+function computeInactiveUserCount(events, thresholdDays = 30) {{
+  const lastSeen = computeLastSeen(events);
+  const countsByDate = {{}};
+  const allDates = [...new Set(events.map(e => e.ts.substring(0, 10)))].sort();
+
+  allDates.forEach(date => {{
+    const refDate = new Date(date);
+    let inactiveCount = 0;
+    Object.values(lastSeen).forEach(lastDate => {{
+      const daysSince = (refDate - lastDate) / (1000 * 60 * 60 * 24);
+      if (daysSince > thresholdDays) inactiveCount++;
+    }});
+    countsByDate[date] = inactiveCount;
+  }});
+  return countsByDate;
+}}
+
+// Compute user total scan counts
+function computeUserTotalScans(events) {{
+  const counts = {{}};
+  events.forEach(e => {{
+    const badge = e.badge_id || '(no badge)';
+    counts[badge] = (counts[badge] || 0) + 1;
+  }});
+  return counts;
+}}
+
+// Compute user first/last scan dates
+function computeUserScanRange(events) {{
+  const ranges = {{}};
+  events.forEach(e => {{
+    const badge = e.badge_id || '(no badge)';
+    const ts = new Date(e.ts);
+    if (!ranges[badge]) {{
+      ranges[badge] = {{ first: ts, last: ts, count: 0 }};
+    }}
+    if (ts < ranges[badge].first) ranges[badge].first = ts;
+    if (ts > ranges[badge].last) ranges[badge].last = ts;
+    ranges[badge].count++;
+  }});
+  return ranges;
+}}
+
+// Render last-seen activity bar chart
+function renderLastSeenActivity(events) {{
+  const includeNoBadge = document.getElementById('chkIncludeNoBadge')?.checked || false;
+  const excludeUnitTest = document.getElementById('chkExcludeUnitTest')?.checked || false;
+  const filtered = events.filter(e => {{
+    const badge = e.badge_id || '';
+    if (excludeUnitTest && badge === 'unit_test') return false;
+    if (!badge && !includeNoBadge) return false;
+    return true;
+  }});
+
+  const lastSeen = computeLastSeen(filtered);
+  const now = new Date();
+  const daysSince = {{}};
+
+  Object.entries(lastSeen).forEach(([badge, date]) => {{
+    daysSince[badge] = Math.floor((now - date) / (1000 * 60 * 60 * 24));
+  }});
+
+  // Sort by days ascending
+  const sorted = Object.entries(daysSince).sort((a, b) => a[1] - b[1]).slice(0, 20);
+  const labels = sorted.map(x => x[0]);
+  const data = sorted.map(x => x[1]);
+  const colors = data.map(d => d < 30 ? 'rgba(78,201,176,0.7)' : d < 90 ? 'rgba(220,220,170,0.7)' : 'rgba(206,145,120,0.7)');
+
+  const id = 'last-seen';
+  const cardId = 'card-' + id;
+  let card = document.getElementById(cardId);
+  if (!card) {{
+    card = document.createElement('div');
+    card.className = 'card';
+    card.id = cardId;
+    document.getElementById('chartsGrid').appendChild(card);
+  }}
+  card.innerHTML = `<h2>Last Seen Activity (Top 20)</h2><canvas id="chart-${{id}}"></canvas>`;
+
+  if (charts[id]) charts[id].destroy();
+  const canvas = document.getElementById('chart-' + id);
+  charts[id] = new Chart(canvas, {{
+    type: 'bar',
+    data: {{
+      labels,
+      datasets: [{{
+        label: 'Days Since Last Scan',
+        data,
+        backgroundColor: colors,
+        borderColor: colors.map(c => c.replace('0.7', '1')),
+        borderWidth: 1
+      }}]
+    }},
+    options: {{
+      responsive: true,
+      maintainAspectRatio: false,
+      indexAxis: 'y',
+      plugins: {{
+        legend: {{ display: false }}
+      }}
+    }}
+  }});
+  canvas.style.height = '260px';
+
+  // Make bars clickable to copy badge IDs
+  try {{
+    const chartObj = charts[id];
+    if (canvas && chartObj) {{
+      canvas.style.cursor = 'pointer';
+      canvas.onclick = async (evt) => {{
+        try {{
+          const items = chartObj.getElementsAtEventForMode(evt, 'nearest', {{ intersect: true }}, true);
+          if (!items || !items.length) return;
+          const idx = items[0].index;
+          const label = chartObj.data.labels[idx];
+          if (!label) return;
+          try {{
+            await navigator.clipboard.writeText(label);
+            updateStatus(`Copied "${{label}}" to clipboard`, 'cached');
+          }} catch (e) {{
+            prompt('Badge ID (copy from here):', label);
+          }}
+        }} catch (e) {{ console.error('copy-on-click failed', e); }}
+      }};
+    }}
+  }} catch (e) {{ /* ignore errors */ }}
+}}
+
+// Render user × month heatmap
+function renderUserMonthHeatmap(events) {{
+  const includeNoBadge = document.getElementById('chkIncludeNoBadge')?.checked || false;
+  const excludeUnitTest = document.getElementById('chkExcludeUnitTest')?.checked || false;
+  const filtered = events.filter(e => {{
+    const badge = e.badge_id || '';
+    if (excludeUnitTest && badge === 'unit_test') return false;
+    if (!badge && !includeNoBadge) return false;
+    return true;
+  }});
+
+  const userMonth = computeUserMonthScans(filtered);
+  const users = Object.keys(userMonth).sort().slice(0, 15); // Top 15 users
+  const months = [...new Set(filtered.map(e => e.ts.substring(0, 7)))].sort();
+
+  const id = 'user-month-heatmap';
+  let card = document.getElementById('card-' + id);
+  if (!card) {{
+    card = document.createElement('div');
+    card.className = 'card full-row';
+    card.id = 'card-' + id;
+    document.getElementById('chartsGrid').appendChild(card);
+  }}
+
+  let html = '<h2>User Activity Heatmap (Top 15 Users)</h2>';
+  html += '<div style="max-height:400px;overflow:auto;"><table><thead><tr><th>User</th>';
+  months.forEach(m => {{ html += `<th>${{m}}</th>`; }});
+  html += '</tr></thead><tbody>';
+
+  const maxCount = Math.max(...users.map(u => Math.max(...months.map(m => userMonth[u][m] || 0))));
+
+  users.forEach(user => {{
+    html += `<tr><td>${{user}}</td>`;
+    months.forEach(month => {{
+      const count = userMonth[user][month] || 0;
+      const intensity = maxCount ? (count / maxCount) : 0;
+      const color = `rgba(78,201,176,${{0.1 + intensity * 0.9}})`;
+      const cls = count > 0 ? 'heatmap-cell' : '';
+      html += `<td class="${{cls}}" data-user="${{user}}" data-month="${{month}}" title="${{count}} event${{count === 1 ? '' : 's'}}" style="background:${{color}};text-align:center;cursor:${{count ? 'pointer' : 'default'}};">${{count || ''}}</td>`;
+    }});
+    html += '</tr>';
+  }});
+  html += '</tbody></table></div>';
+  card.innerHTML = html;
+
+  // Attach click handlers for cells
+  const tbody = card.querySelector('tbody');
+  if (tbody) {{
+    tbody.querySelectorAll('td.heatmap-cell').forEach(td => {{
+      td.addEventListener('click', (ev) => {{
+        const user = td.getAttribute('data-user');
+        const month = td.getAttribute('data-month');
+        openUserMonthModal(user, month);
+      }});
+    }});
+  }}
+}}
+
+// Render active user count over time
+function renderActiveUserCount(events) {{
+  const includeNoBadge = document.getElementById('chkIncludeNoBadge')?.checked || false;
+  const excludeUnitTest = document.getElementById('chkExcludeUnitTest')?.checked || false;
+  const filtered = events.filter(e => {{
+    const badge = e.badge_id || '';
+    if (excludeUnitTest && badge === 'unit_test') return false;
+    if (!badge && !includeNoBadge) return false;
+    return true;
+  }});
+
+  // Default to monthly granularity
+  const granularity = 'month';
+  const data = computeUniqueUsersOverTime(filtered, granularity);
+  const labels = data.map(d => d.period);
+  const counts = data.map(d => d.count);
+
+  createChart('active-user-count', 'Active Users Over Time (Monthly)', 'line', labels, counts);
+}}
+
+// Render inactive user trend
+function renderInactiveUserTrend(events) {{
+  const includeNoBadge = document.getElementById('chkIncludeNoBadge')?.checked || false;
+  const excludeUnitTest = document.getElementById('chkExcludeUnitTest')?.checked || false;
+  const filtered = events.filter(e => {{
+    const badge = e.badge_id || '';
+    if (excludeUnitTest && badge === 'unit_test') return false;
+    if (!badge && !includeNoBadge) return false;
+    return true;
+  }});
+
+  // Compute for 30, 60, 90 day thresholds
+  const thresholds = [30, 60, 90];
+  const dates = [...new Set(filtered.map(e => e.ts.substring(0, 10)))].sort();
+  const datasets = thresholds.map((threshold, idx) => {{
+    const countsByDate = computeInactiveUserCount(filtered, threshold);
+    const colors = ['rgba(78,201,176,0.7)', 'rgba(220,220,170,0.7)', 'rgba(206,145,120,0.7)'];
+    return {{
+      label: `>${{threshold}} days inactive`,
+      data: dates.map(d => countsByDate[d] || 0),
+      borderColor: colors[idx],
+      backgroundColor: 'transparent',
+      tension: 0.3
+    }};
+  }});
+
+  const id = 'inactive-user-trend';
+  const cardId = 'card-' + id;
+  let card = document.getElementById(cardId);
+  if (!card) {{
+    card = document.createElement('div');
+    card.className = 'card';
+    card.id = cardId;
+    document.getElementById('chartsGrid').appendChild(card);
+  }}
+  card.innerHTML = `<h2>Inactive User Trend</h2><canvas id="chart-${{id}}"></canvas>`;
+
+  if (charts[id]) charts[id].destroy();
+  const canvas = document.getElementById('chart-' + id);
+  charts[id] = new Chart(canvas, {{
+    type: 'line',
+    data: {{ labels: dates, datasets }},
+    options: {{ responsive: true, maintainAspectRatio: false }}
+  }});
+  canvas.style.height = '260px';
+}}
+
+// Render user activity distribution histogram
+function renderUserActivityDistribution(events) {{
+  const includeNoBadge = document.getElementById('chkIncludeNoBadge')?.checked || false;
+  const excludeUnitTest = document.getElementById('chkExcludeUnitTest')?.checked || false;
+  const filtered = events.filter(e => {{
+    const badge = e.badge_id || '';
+    if (excludeUnitTest && badge === 'unit_test') return false;
+    if (!badge && !includeNoBadge) return false;
+    return true;
+  }});
+
+  const userCounts = computeUserTotalScans(filtered);
+  const counts = Object.values(userCounts);
+
+  // Buckets: 0, 1-5, 6-20, 21-50, 51+
+  const buckets = {{ '0': 0, '1-5': 0, '6-20': 0, '21-50': 0, '51+': 0 }};
+  counts.forEach(c => {{
+    if (c === 0) buckets['0']++;
+    else if (c <= 5) buckets['1-5']++;
+    else if (c <= 20) buckets['6-20']++;
+    else if (c <= 50) buckets['21-50']++;
+    else buckets['51+']++;
+  }});
+
+  const labels = Object.keys(buckets);
+  const data = Object.values(buckets);
+  createChart('user-activity-dist', 'User Activity Distribution', 'bar', labels, data);
+}}
+
+// Render churn detection scatter/visualization
+function renderChurnDetection(events) {{
+  const includeNoBadge = document.getElementById('chkIncludeNoBadge')?.checked || false;
+  const excludeUnitTest = document.getElementById('chkExcludeUnitTest')?.checked || false;
+  const filtered = events.filter(e => {{
+    const badge = e.badge_id || '';
+    if (excludeUnitTest && badge === 'unit_test') return false;
+    if (!badge && !includeNoBadge) return false;
+    return true;
+  }});
+
+  const ranges = computeUserScanRange(filtered);
+  const now = new Date();
+
+  const id = 'churn-detection';
+  let card = document.getElementById('card-' + id);
+  if (!card) {{
+    card = document.createElement('div');
+    card.className = 'card full-row';
+    card.id = 'card-' + id;
+    document.getElementById('chartsGrid').appendChild(card);
+  }}
+
+  let html = '<h2>Churn Detection (User Lifecycle)</h2>';
+  html += '<div style="max-height:400px;overflow:auto;"><table><thead><tr><th>User</th><th>First Scan</th><th>Last Scan</th><th>Total Scans</th><th>Days Since Last</th><th>Status</th></tr></thead><tbody>';
+
+  Object.entries(ranges).sort((a, b) => b[1].last - a[1].last).slice(0, 30).forEach(([user, data]) => {{
+    const daysSince = Math.floor((now - data.last) / (1000 * 60 * 60 * 24));
+    const status = daysSince < 30 ? 'Active' : daysSince < 90 ? 'At Risk' : 'Churned';
+    const statusColor = status === 'Active' ? '#4ec9b0' : status === 'At Risk' ? '#dcdcaa' : '#ce9178';
+    html += `<tr><td>${{user}}</td><td>${{data.first.toISOString().split('T')[0]}}</td><td>${{data.last.toISOString().split('T')[0]}}</td><td>${{data.count}}</td><td>${{daysSince}}</td><td style="color:${{statusColor}};font-weight:bold;">${{status}}</td></tr>`;
+  }});
+  html += '</tbody></table></div>';
+  card.innerHTML = html;
 }}
 
 // Export too-long-open list as CSV
