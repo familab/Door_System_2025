@@ -11,6 +11,7 @@ Features:
 """
 from __future__ import annotations
 import argparse
+import json
 import shutil
 import subprocess
 import sys
@@ -18,21 +19,76 @@ import os
 from pathlib import Path
 
 
-def copy_device_configs(src: Path, dest: Path, dry_run: bool = False) -> int:
+def find_existing_device(device_id: str, dest: Path) -> Path | None:
+    """Find an existing device config file by device ID in destination."""
+    for json_file in dest.rglob("*.json"):
+        try:
+            data = json.loads(json_file.read_text(encoding="utf-8"))
+            if data.get("id", "").lower() == device_id.lower():
+                return json_file
+        except Exception:
+            continue
+    return None
+
+
+def copy_device_configs(src: Path, dest: Path, dry_run: bool = False, force: bool = False) -> int:
+    """Copy device configs to appropriate category subdirectories, detecting duplicates."""
     if not src.exists():
         print(f"Source directory not found: {src}")
         return 0
+
     dest.mkdir(parents=True, exist_ok=True)
-    count = 0
+    copied = 0
+    skipped = 0
+    overwritten = 0
+
     for p in src.rglob("*.json"):
-        target = dest / p.name
-        if dry_run:
-            print(f"Would copy {p} -> {target}")
-        else:
-            shutil.copy(p, target)
-            print(f"Copied {p} -> {target}")
-        count += 1
-    return count
+        try:
+            # Read device config to get ID and category
+            data = json.loads(p.read_text(encoding="utf-8"))
+            device_id = data.get("id", p.stem)
+            category = data.get("category", "generic")
+
+            # Check for existing device with same ID
+            existing = find_existing_device(device_id, dest)
+            if existing and not force:
+                print(f"[SKIP] {p.name}: Device ID '{device_id}' already exists at {existing.relative_to(dest)}")
+                skipped += 1
+                continue
+            elif existing and force:
+                print(f"[OVERWRITE] {p.name}: Replacing existing device at {existing.relative_to(dest)}")
+                if not dry_run:
+                    existing.unlink()
+                overwritten += 1
+
+            # Determine target directory based on category
+            category_dir = dest / category
+            category_dir.mkdir(exist_ok=True)
+            target = category_dir / p.name
+
+            if dry_run:
+                print(f"Would copy {p} -> {target}")
+            else:
+                shutil.copy(p, target)
+                print(f"[OK] Copied {p.name} -> {category}/{p.name}")
+            copied += 1
+
+        except Exception as e:
+            print(f"[ERROR] Processing {p.name}: {e}")
+            skipped += 1
+            continue
+
+    if skipped > 0 or overwritten > 0:
+        parts = []
+        if copied > 0:
+            parts.append(f"{copied} copied")
+        if overwritten > 0:
+            parts.append(f"{overwritten} overwritten")
+        if skipped > 0:
+            parts.append(f"{skipped} skipped")
+        print(f"\nSummary: {', '.join(parts)}")
+
+    return copied
 
 
 def patch_schemas(pinviz_module_path: Path, dry_run: bool = False) -> bool:
@@ -102,6 +158,7 @@ def main() -> int:
     ap.add_argument("--src", default=Path("diagram/device_configs"))
     ap.add_argument("--patch-schemas", action="store_true", help="Patch pinviz.schemas to auto-discover JSON ids")
     ap.add_argument("--validate-devices", action="store_true", help="Run `pinviz validate-devices` after copying")
+    ap.add_argument("--force", action="store_true", help="Overwrite existing devices with same ID")
     ap.add_argument("--dry-run", action="store_true", help="Show actions without modifying files")
     args = ap.parse_args()
 
@@ -115,8 +172,9 @@ def main() -> int:
 
     dest = Path(pinviz.__file__).parent / "device_configs"
 
-    count = copy_device_configs(src, dest, dry_run=args.dry_run)
-    print(f"Copied {count} device configs into {dest}")
+    count = copy_device_configs(src, dest, dry_run=args.dry_run, force=args.force)
+    if count > 0:
+        print(f"\n[SUCCESS] Imported {count} device config(s) into {dest}")
 
     if args.patch_schemas:
         ok = patch_schemas(Path(pinviz.__file__), dry_run=args.dry_run)
