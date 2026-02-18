@@ -1,0 +1,13 @@
+{
+  "id": "nfc_reader",
+  "name": "PN532 NFC Reader",
+  "category": "generic",
+    "datasheet_url": "https://www.aliexpress.us/item/3256806046261874.html?src=google&pdp_npi=4%40dis%21USD%213.72%211.26%21%21%21%21%21%40%2112000036391432632%21ppc%21%21%21&src=google&albch=shopping&acnt=708-803-3821&isdl=y&slnk=&plac=&mtctp=&albbt=Google_7_shopping&aff_platform=google&aff_short_key=UneMJZVf&gclsrc=aw.ds&albagn=888888&ds_e_adid=&ds_e_matchtype=&ds_e_device=c&ds_e_network=x&ds_e_product_group_id=&ds_e_product_id=en3256806046261874&ds_e_product_merchant_id=5308071469&ds_e_product_country=US&ds_e_product_language=en&ds_e_product_channel=online&ds_e_product_store_id=&ds_url_v=2&albcp=19678427463&albag=&isSmbAutoCall=false&needSmbHouyi=false&gad_source=1&gad_campaignid=19686402437&gbraid=0AAAAAD6I-hFBHCIgS0Q4GDToCvzlwQRxA&gclid=CjwKCAiAwNDMBhBfEiwAd7ti1DdmQknZWHSEW9yrv62rGIMNID51gx3iZlwiaCArMIYIt3zsZ6K68hoCwMMQAvD_BwE&gatewayAdapt=glo2usa",
+    "description": "NFC reader module based on the PN532 chip, compatible with Arduino",
+    "pins": [
+        { "name": "GND", "role": "GND", "side": "left" },
+        { "name": "VCC", "role": "5V", "side": "left" },
+        { "name": "SDA", "role": "I2C_SDA", "side": "left" },
+        { "name": "SCL", "role": "I2C_SCL", "side": "left" }
+    ]
+}

@@ -1,0 +1,15 @@
+{
+  "id": "relay_module_dc",
+  "name": "Relay Module (DC)",
+  "description": "General-purpose relay module with control input and relay contacts.",
+  "category": "actuators",
+  "datasheet_url": "https://www.aliexpress.us/item/3256803589903207.html",
+  "pins": [
+    { "name": "DC+", "role": "5V", "side": "left" },
+    { "name": "DC-", "role": "GND", "side": "left" },
+    { "name": "IN", "role": "GPIO", "side": "left" },
+    { "name": "NC", "role": "5V", "side": "right" },
+    { "name": "COM", "role": "5V", "side": "right" },
+    { "name": "NO", "role": "5V", "side": "right" }
+  ]
+}

@@ -13,12 +13,26 @@ board: "raspberry_pi_4"
 show_legend: true
 
 devices:
-  - type: "i2c_device"
+  - type: "breadboard"
+    name: "proto breadboard"
+    color: "white"
+    description: "1/2 breadboard capacitor. Standard prototyping breadboard for electronics projects"
+  - type: "nfc_reader"
     name: "PN532 NFC Reader"
+    color: "#FF0000"
+    # red
     description: "PN532 NFC RFID reader (I2C)."
 
-  - type: "relay_module"
-    name: "Relay Module"
+  - type: "relay_module_dc"
+    name: "Relay Module1"
+    color: "red"
+    # blue
+    description: "5V relay module controlling a 12V load (COM/NO/NC)."
+
+  - type: "relay_module_dc"
+    name: "Relay Module2"
+    color: "red"
+    # blue
     description: "5V relay module controlling a 12V load (COM/NO/NC)."
 
   - name: "Unlock Button"
@@ -40,10 +54,10 @@ devices:
         role: "GND"
 
   - type: "power_supply"
-    name: "12V Power Supply"
+    name: "5V Power Supply"
 
-  - type: "buck_converter"
-    name: "12V to 5V Buck Converter"
+  # - type: "buck_converter"
+  #   name: "12V to 5V Buck Converter"
 
   - type: "door_latch"
     name: "12V Door Latch"
@@ -56,65 +70,101 @@ devices:
 
 connections:
   # PN532 NFC Reader (I2C) - powered from buck converter
-  - from: {device: "12V to 5V Buck Converter", device_pin: "VOUT_3V3"}
-    to:   {device: "PN532 NFC Reader", device_pin: "VCC"}
+  # - from: {device: "12V to 5V Buck Converter", device_pin: "VOUT_3V3"}
+  #   to:   {device: "PN532 NFC Reader", device_pin: "VCC"}
 
-  - from: {device: "12V to 5V Buck Converter", device_pin: "GND_OUT"}
-    to:   {device: "PN532 NFC Reader", device_pin: "GND"}
+  # - from: {device: "12V to 5V Buck Converter", device_pin: "GND_OUT"}
+  #   to:   {device: "PN532 NFC Reader", device_pin: "GND"}
 
-  - board_pin: 3       # GPIO2 (I2C SDA)
+  - board_pin: 6      # 3.3V
+    device: "proto breadboard"
+    device_pin: "30-"
+    color: "black"
+
+  - board_pin: 4      # GPIO2 (I2C SDA)
+    device: "Relay Module1"
+    device_pin: "NC"
+    color: "red"
+
+  - board_pin: 3      # GPIO2 (I2C SDA)
     device: "PN532 NFC Reader"
     device_pin: "SDA"
+    color: "#808080"
 
-  - board_pin: 5       # GPIO3 (I2C SCL)
+  - board_pin: 5      # GPIO3 (I2C SCL)
     device: "PN532 NFC Reader"
     device_pin: "SCL"
+    color: "purple"
 
   # Relay Module (GPIO 17 = physical pin 11)
-  - board_pin: 11      # GPIO17 - Relay control signal
-    device: "Relay Module"
-    device_pin: "IN"
+  # - board_pin: 9      # GPIO17 - Relay control signal
+  #   device: "Relay Module1"
+  #   device_pin: "IN"
 
-  - board_pin: 9       # GND
-    device: "Relay Module"
-    device_pin: "GND"
+  # - from: {device: "12V to 5V Buck Converter", device_pin: "VOUT_5V"}
+  #   to:   {device: "Relay Module", device_pin: "DC+"}
 
+  # - board_pin: 33       # GND
+  #   device: "Relay Module1"
+  #   device_pin: "DC-"
+
+# x
   # Unlock Button (GPIO 27 = physical pin 13)
-  - board_pin: 13      # GPIO27
+  - board_pin: 34      # GPIO27
     device: "Unlock Button"
     device_pin: "+"
+    color: "yellow"
 
-  - board_pin: 14      # GND
+  - board_pin: 11      # GND
+    device: "Relay Module2"
+    device_pin: "IN"
+    color: "orange"
+
+
+# x
+  - board_pin: 13      # GND
     device: "Unlock Button"
     device_pin: "-"
+    color: "#228B22"
 
   # Lock Button (GPIO 22 = physical pin 15)
   - board_pin: 15      # GPIO22
     device: "Lock Button"
     device_pin: "+"
+    color: "blue"
 
-  - board_pin: 20      # GND
+  - board_pin: 30      # GND
     device: "Lock Button"
     device_pin: "-"
+    color: "purple"
 
   # Power and device-to-device connections
-  - from: {device: "12V Power Supply", device_pin: "12V"}
-    to:   {device: "Relay Module", device_pin: "COM"}
+  - from: {device: "5V Power Supply", device_pin: "out1+"}
+    to:   {device: "Relay Module1", device_pin: "COM"}
 
-  - from: {device: "Relay Module", device_pin: "NO"}
+  - from: {device: "Relay Module1", device_pin: "NO"}
     to:   {device: "12V Door Latch", device_pin: "POWER"}
 
-  - from: {device: "12V Power Supply", device_pin: "GND"}
+  - from: {device: "5V Power Supply", device_pin: "out1-"}
     to:   {device: "12V Door Latch", device_pin: "GND"}
 
-  - from: {device: "12V Power Supply", device_pin: "12V"}
-    to:   {device: "12V to 5V Buck Converter", device_pin: "VIN"}
+  # - from: {device: "5V Power Supply", device_pin: "out2+"}
+  #   to:   {device: "12V to 5V Buck Converter", device_pin: "VIN"}
 
-  - from: {device: "12V to 5V Buck Converter", device_pin: "VOUT_3V3"}
+  - from: {device: "proto breadboard", device_pin: "28+"}
     to:   {device: "PN532 NFC Reader", device_pin: "VCC"}
 
-  - from: {device: "12V to 5V Buck Converter", device_pin: "GND_OUT"}
+  - from: {device: "proto breadboard", device_pin: "28-"}
     to:   {device: "PN532 NFC Reader", device_pin: "GND"}
+
+
+  - from: {device: "proto breadboard", device_pin: "27-"}
+    to:   {device: "5V Power Supply", device_pin: "out1-"}
+    color: "black"
+  - from: {device: "Relay Module2", device_pin: "DC-"}
+    to:   {device: "5V Power Supply", device_pin: "out2-"}
+    color: "black"
+
 
 # Notes (moved to comments because top-level 'notes' is not supported by PinViz schema):
 # CONFIG:

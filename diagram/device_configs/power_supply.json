@@ -1,10 +1,17 @@
 {
   "id": "power_supply",
-  "name": "12V Power Supply",
+  "name": "mini560pro Power Supply",
   "description": "External 12V power supply for the latch and converter.",
   "category": "generic",
+  "datasheet_url": "https://www.tztstore.com/goods/show-6395.html",
   "pins": [
-    { "name": "12V", "role": "5V" },
-    { "name": "GND", "role": "GND" }
+    { "name": "in1+", "role": "GND", "side": "left" },
+    { "name": "in2+", "role": "GND", "side": "left" },
+    { "name": "in1-", "role": "GND", "side": "left" },
+    { "name": "in2-", "role": "GND", "side": "left" },
+    { "name": "out1+", "role": "GND", "side": "right" },
+    { "name": "out2+", "role": "GND", "side": "right" },
+    { "name": "out1-", "role": "GND", "side": "right" },
+    { "name": "out2-", "role": "GND", "side": "right" }
   ]
 }
