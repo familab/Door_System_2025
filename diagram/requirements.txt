@@ -1,6 +1,6 @@
 
 # PinViz CLI and device tooling
-pinviz==0.16.0
+pinviz==0.16.1
 
 # Required for the per-device generation script (`diagram/scripts/generate_per_device_diagrams.py`)
 # and useful for CI steps that manage YAMLs
