@@ -5,8 +5,8 @@ import os
 import logging
 from datetime import datetime
 from unittest.mock import patch
-from lib.config import config
-import lib.logging_utils as logging_utils
+from src_service.config import config
+import src_service.logging_utils as logging_utils
 
 
 class TestLoggingUtils(unittest.TestCase):
@@ -57,8 +57,8 @@ class TestLoggingUtils(unittest.TestCase):
         try:
             logging_utils.setup_logger(log_file)
 
-            # Record various actions
-            logging_utils.record_action("Door Opened")
+            # Record various actions (include unit_test badge id for tests)
+            logging_utils.record_action("Door Opened", "unit_test", "Success")
             logging_utils.record_action("Badge Scanned", "ABC123", "Granted")
             logging_utils.record_action("Invalid Badge", "XYZ789", "Denied")
 
@@ -67,6 +67,7 @@ class TestLoggingUtils(unittest.TestCase):
                 log_contents = f.read()
 
             self.assertIn("Door Opened", log_contents)
+            self.assertIn("unit_test", log_contents)
             self.assertIn("ABC123", log_contents)
             self.assertIn("Granted", log_contents)
             self.assertIn("XYZ789", log_contents)
@@ -158,9 +159,39 @@ class TestLoggingUtils(unittest.TestCase):
             log_file = f.name
 
         try:
-            with patch('lib.logging_utils.config', {"LOG_FILE": log_file}):
+            with patch('src_service.logging_utils.config', {"LOG_FILE": log_file}):
                 size = logging_utils.get_log_file_size()
                 self.assertGreater(size, 0)
+        finally:
+            if os.path.exists(log_file):
+                os.unlink(log_file)
+
+    def test_get_log_file_size_cache(self):
+        """Ensure get_log_file_size caches results and refreshes after expiry."""
+        import os
+        from datetime import datetime, timedelta
+
+        with tempfile.NamedTemporaryFile(delete=False) as f:
+            f.write(b"A" * 100)
+            log_file = f.name
+
+        try:
+            with patch('src_service.logging_utils.config', {"LOG_FILE": log_file, "HEALTH_CACHE_DURATION_MINUTES": 5}):
+                size1 = logging_utils.get_log_file_size()
+                self.assertGreater(size1, 0)
+
+                # Shrink the file on disk
+                with open(log_file, 'wb') as f2:
+                    f2.write(b"B" * 10)
+
+                # Immediate call should return cached (old) size
+                size2 = logging_utils.get_log_file_size()
+                self.assertEqual(size1, size2)
+
+                # Expire cache and verify fresh value is returned
+                logging_utils._log_size_cache['modified'] = datetime.now() - timedelta(minutes=10)
+                size3 = logging_utils.get_log_file_size()
+                self.assertNotEqual(size1, size3)
         finally:
             if os.path.exists(log_file):
                 os.unlink(log_file)
@@ -481,6 +512,25 @@ class TestLoggingUtils(unittest.TestCase):
 
             for n in names:
                 self.assertFalse(os.path.exists(os.path.join(tmpdir, n)))
+
+    def test_cleanup_ingests_action_log_before_delete(self):
+        """Cleanup should ingest old action logs before deletion."""
+        import tempfile
+        from datetime import date, timedelta
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            old_date = date.today() - timedelta(days=10)
+            action_name = f"door_controller_action-{old_date:%Y-%m-%d}.txt"
+            action_path = os.path.join(tmpdir, action_name)
+            with open(action_path, "w", encoding="utf-8") as handle:
+                handle.write("2026-02-08 12:00:00 - door_action - INFO - Manual Lock - Status: Success\n")
+
+            config.config["LOG_FILE"] = os.path.join(tmpdir, "door_controller.txt")
+            config.config["LOG_RETENTION_DAYS"] = 7
+            with patch("src_service.logging_utils.ingest_action_log_file") as ingest_mock:
+                logging_utils.cleanup_old_logs(retention_days=7)
+                ingest_mock.assert_called_once_with(action_path)
+            self.assertFalse(os.path.exists(action_path))
 
 
 if __name__ == '__main__':

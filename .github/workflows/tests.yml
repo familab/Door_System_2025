@@ -145,3 +145,17 @@ jobs:
       with:
         name: coverage-report
         path: htmlcov/
+
+  automerge:
+    needs: test
+    name: Auto-merge PR if tests pass
+    if: (github.actor == 'dependabot[bot]' || github.actor == 'imgbot[bot]') && needs.test.result == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Merge PR
+        uses: peter-evans/enable-pull-request-automerge@v3
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          merge-method: squash
+          pull-request-number: ${{ github.event.pull_request.number }}
+

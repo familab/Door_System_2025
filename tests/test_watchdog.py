@@ -4,7 +4,7 @@ from unittest.mock import Mock, patch, mock_open
 import time
 import os
 import tempfile
-import lib.watchdog as watchdog
+import src_service.watchdog as watchdog
 
 
 class TestWatchdog(unittest.TestCase):
@@ -21,7 +21,7 @@ class TestWatchdog(unittest.TestCase):
         self.temp_file.close()
 
         # Patch the provider used by Watchdog (patch the symbol in watchdog module)
-        self.logger_patcher = patch('lib.watchdog.get_watchdog_logger')
+        self.logger_patcher = patch('src_service.watchdog.get_watchdog_logger')
         self.mock_logger = self.logger_patcher.start()
         self.mock_logger.return_value = Mock()
 

@@ -1,0 +1,16 @@
+{
+    "id": "breadboard",
+    "name": "Proto Breadboard",
+    "category": "generic",
+    "description": "1/2 breadboard capacitor. Standard prototyping breadboard for electronics projects",
+    "pins": [
+        { "name": "30-", "role": "5V", "side": "left" },
+        { "name": "29-", "role": "GND", "side": "left" },
+        { "name": "28-", "role": "GND", "side": "left" },
+        { "name": "27-", "role": "GND", "side": "left" },
+        { "name": "30+", "role": "GND", "side": "right" },
+        { "name": "29+", "role": "GND", "side": "right" },
+        { "name": "28+", "role": "GND", "side": "right" },
+        { "name": "27+", "role": "GND", "side": "right" }
+    ]
+}

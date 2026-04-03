@@ -8,6 +8,7 @@ import os
 import re
 
 from .config import config
+from .metrics_storage import ingest_action_log_file
 
 # Global logger instance
 logger = None
@@ -224,8 +225,8 @@ def record_action(action: str, badge_id: Optional[str] = None, status: str = "Su
         log.exception("Failed to log to action logger")
 
 
-def update_last_google_error(message: str):
-    """Update the last Google Sheets error message."""
+def update_last_google_error(message: Optional[str]):
+    """Update the last Google Sheets error message. Pass None to clear."""
     global last_google_error
     with timestamp_lock:
         last_google_error = message
@@ -319,19 +320,40 @@ def log_pn532_success():
     get_logger().debug("PN532 read successful")
 
 
+# Simple cache for log file size to avoid repeated filesystem stat calls
+_log_size_cache = {"modified": None, "size": 0}
+_log_size_cache_lock = threading.Lock()
+
+
 def get_log_file_size() -> int:
     """
     Get the size of the current log file in bytes.
 
+    Results are cached for `HEALTH_CACHE_DURATION_MINUTES` (default 5) to reduce
+    repeated filesystem calls during frequent health checks.
+
     Returns:
         File size in bytes, or 0 if file doesn't exist
     """
+    from datetime import datetime, timedelta
+
+    duration = int(config.get("HEALTH_CACHE_DURATION_MINUTES", 5) or 5)
+    with _log_size_cache_lock:
+        modified = _log_size_cache["modified"]
+        if modified and (datetime.now() - modified) <= timedelta(minutes=duration):
+            return int(_log_size_cache["size"])
+
     import os
     log_file = get_current_log_file_path()
     try:
-        return os.path.getsize(log_file)
+        size = os.path.getsize(log_file)
     except FileNotFoundError:
-        return 0
+        size = 0
+
+    with _log_size_cache_lock:
+        _log_size_cache["modified"] = datetime.now()
+        _log_size_cache["size"] = size
+    return size
 
 
 def _parse_log_base(log_file: str):
@@ -359,6 +381,19 @@ def get_current_log_file_path() -> str:
     return log_file
 
 
+def get_current_action_log_file_path() -> str:
+    """Return the path to the current (today's) action log file."""
+    action_log_file = config.get("ACTION_LOG_FILE")
+    if not action_log_file:
+        action_log_file = _build_derived_file(config["LOG_FILE"], "_action")
+    dated_path = _get_dated_log_path(action_log_file, date.today())
+    if os.path.exists(dated_path):
+        return dated_path
+    if os.path.exists(action_log_file):
+        return action_log_file
+    return dated_path
+
+
 def cleanup_old_logs(retention_days: Optional[int] = None):
     retention_days = retention_days or config["LOG_RETENTION_DAYS"]
     log_file = config["LOG_FILE"]
@@ -383,7 +418,11 @@ def cleanup_old_logs(retention_days: Optional[int] = None):
                 continue
             if file_date < cutoff:
                 try:
-                    os.remove(os.path.join(log_dir, name))
+                    full_path = os.path.join(log_dir, name)
+                    # Persist action log history into monthly sqlite metrics before deletion.
+                    if suffix == "_action":
+                        ingest_action_log_file(full_path)
+                    os.remove(full_path)
                 except Exception:
                     pass
             break

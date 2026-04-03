@@ -16,18 +16,19 @@ import os
 # Try to import Raspberry Pi GPIO, fall back to emulator/stub for development on Windows
 try:
     import RPi.GPIO as GPIO
-except ModuleNotFoundError:
+except Exception:
     try:
         # Some emulator packages may expose an alternative module name
         import RPi.GPIO_emulator as GPIO  # type: ignore
     except Exception:
         # Local stub as final fallback
         import importlib
-        GPIO = importlib.import_module('lib.gpio_stub')
+        GPIO = importlib.import_module('src_service.gpio_stub')
         print("Warning: RPi.GPIO not found; using GPIO stub for development.")
 import time
 import threading
 import csv
+from typing import Optional
 try:
     import board
     import busio
@@ -39,16 +40,24 @@ except Exception:
     # PN532 hardware libs not available; we will use a stub at initialization time
 
 # Import new modules
-from lib.config import config
-from lib.logging_utils import (
+from src_service.config import config
+from src_service.logging_utils import (
     logger,
     record_action,
     log_pn532_error
 )
-from lib.data import GoogleSheetsData
-from lib.door_control import DoorController, set_door_status, get_door_status
-from lib.health_server import start_health_server, stop_health_server, update_pn532_success, update_pn532_error, set_badge_refresh_callback
-from lib.watchdog import start_watchdog, stop_watchdog
+from src_service.data import GoogleSheetsData
+from src_service.door_control import DoorController, set_door_status, get_door_status
+from src_service.server import (
+    start_health_server,
+    stop_health_server,
+    update_pn532_success,
+    update_pn532_error,
+    set_badge_refresh_callback,
+    set_door_toggle_callback,
+    update_badge_refresh_attempt_time,
+)
+from src_service.watchdog import start_watchdog, stop_watchdog
 
 # GPIO Pin Definitions (from config)
 RELAY_PIN = config["RELAY_PIN"]
@@ -61,7 +70,7 @@ UNLOCK_DURATION = config["UNLOCK_DURATION"]
 # Local CSV backup file
 CSV_FILE = config["CSV_FILE"]
 
-# Global `logger` is initialized in lib.logging_utils at import time
+# Global `logger` is initialized in src_service.logging_utils at import time
 # Use the module-level `logger` imported above
 
 # Log which backends are active for easier debugging in dev
@@ -83,9 +92,6 @@ logger.info("=" * 60)
 data_client = GoogleSheetsData()
 data_client.connect()
 
-
-# Register badge refresh callback so it can be invoked from the health page
-from lib.health_server import set_badge_refresh_callback
 
 def _refresh_badge_list():
     """Refresh badge list from Google Sheets and update local CSV backup.
@@ -131,6 +137,9 @@ def _schedule_daily_badge_refresh(stop_event: threading.Event):
                 logger.warning(f"Scheduled badge refresh failed: {message}")
         except Exception as e:
             logger.warning(f"Scheduled badge refresh error: {e}")
+        finally:
+            # Update attempt time (success or failure) so timer advances in memory
+            update_badge_refresh_attempt_time()
 
         # Wait for next interval or stop
         stop_event.wait(interval)
@@ -169,7 +178,7 @@ try:
     logger.info("PN532 RFID reader initialized")
 except Exception as e:
     logger.warning(f"Failed to initialize PN532: {e}. Using PN532 stub for development.")
-    from lib.pn532_stub import PN532Stub
+    from src_service.pn532_stub import PN532Stub
     pn532 = PN532Stub()
 
 # Initialize door controller
@@ -181,18 +190,47 @@ last_lock_time = 0
 debounce_time = config["DEBOUNCE_TIME"]
 
 
-def unlock_door():
-    """Unlock door for 1 hour using door controller."""
-    door_controller.unlock_door(UNLOCK_DURATION)
-    record_action("Manual Unlock (1 hour)")
-    data_client.log_access("Manual Unlock (1 hour)", "Success")
+def unlock_door(badge_id: Optional[str] = None):
+    """Unlock door for 1 hour using door controller.
+
+    Args:
+        badge_id: Optional badge identifier to attribute this manual action to.
+    """
+    record_action("Manual Unlock (1 hour)", badge_id=badge_id)
+    door_controller.unlock_door(UNLOCK_DURATION, badge_id=badge_id)
+    try:
+        data_client.log_access("Manual Unlock (1 hour)", "Success")
+    except Exception:
+        pass
 
 
-def lock_door():
-    """Lock door using door controller."""
-    door_controller.lock_door()
-    record_action("Manual Lock")
-    data_client.log_access("Manual Lock", "Success")
+def lock_door(badge_id: Optional[str] = None):
+    """Lock door using door controller.
+
+    Args:
+        badge_id: Optional badge identifier to attribute this manual action to.
+    """
+    record_action("Manual Lock", badge_id=badge_id)
+    door_controller.lock_door(badge_id=badge_id)
+    try:
+        data_client.log_access("Manual Lock", "Success")
+    except Exception:
+        pass
+
+
+def _toggle_door_state(badge_id: Optional[str] = None):
+    """Reuse existing manual lock/unlock actions and return the new lock state.
+
+    Accepts optional badge_id which is forwarded to underlying actions for auditing.
+    """
+    if get_door_status():
+        lock_door(badge_id=badge_id)
+        return "locked"
+    unlock_door(badge_id=badge_id)
+    return "unlocked"
+
+
+set_door_toggle_callback(_toggle_door_state)
 
 
 # Fallback to CSV if Google Sheets is unavailable
@@ -303,7 +341,8 @@ def check_rfid(stop_event: threading.Event):
 
                     # Unlock door temporarily if not already unlocked
                     if not get_door_status():
-                        door_controller.unlock_temporarily(config["DOOR_UNLOCK_BADGE_DURATION"])
+                        # Pass badge UID through so actions are attributed to this badge
+                        door_controller.unlock_temporarily(config["DOOR_UNLOCK_BADGE_DURATION"], badge_id=uid_hex)
 
                     # Log to Google Sheets (best effort)
                     data_client.log_access(uid_hex, "Granted")
@@ -349,7 +388,25 @@ def main():
         refresh_thread.start()
 
         logger.info("All systems operational")
-        logger.info(f"Health page available at http://127.0.0.1:{config['HEALTH_SERVER_PORT']}/health")
+        # Detect whether the health server is actually using TLS (https) and log the correct URL
+        try:
+            import src_service.server.server as server_module
+            hs = server_module._health_server
+            timeout = time.time() + 2
+            while hs and getattr(hs, "server", None) is None and time.time() < timeout:
+                time.sleep(0.01)
+            if hs and getattr(hs, "server", None):
+                actual_port = hs.server.server_address[1]
+                scheme = "https" if getattr(hs, "tls", False) else "http"
+            else:
+                actual_port = config["HEALTH_SERVER_PORT"]
+                scheme = "https" if bool(config.get("HEALTH_SERVER_TLS")) else "http"
+            logger.info(f"Health page available at {scheme}://127.0.0.1:{actual_port}/health")
+        except Exception:
+            # Fallback to config-based URL if detection fails
+            scheme = "https" if bool(config.get("HEALTH_SERVER_TLS")) else "http"
+            logger.info(f"Health page available at {scheme}://127.0.0.1:{config['HEALTH_SERVER_PORT']}/health")
+
         logger.info(f"Health page credentials: {config['HEALTH_SERVER_USERNAME']} / {config['HEALTH_SERVER_PASSWORD']}")
 
         # Wait for both threads to finish (they won't in normal operation)

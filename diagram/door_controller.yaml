@@ -1,0 +1,194 @@
+title: "FamiLAB Door Controller - Raspberry Pi Zero W Wiring"
+# Wiring diagram for the FamiLAB Door Controller. Components:
+# - Raspberry Pi Zero W (40-pin header)
+# - PN532 RFID Reader (I2C)
+# - 12V Relay module (controlled by GPIO)
+# - 12V → 5V buck converter
+# - 12V door latch (powered via relay)
+# - 12V power supply
+# - 2 x Push buttons (unlock, lock)
+# - 3D printed enclosure (mechanical)
+# Pi Zero W shares the same 40-pin GPIO header as Pi 4; pinviz uses the `raspberry_pi_4` board template
+board: "raspberry_pi_4"
+show_legend: true
+
+devices:
+  - type: "breadboard"
+    name: "proto breadboard"
+    color: "white"
+    description: "1/2 breadboard capacitor. Standard prototyping breadboard for electronics projects"
+  - type: "nfc_reader"
+    name: "PN532 NFC Reader"
+    color: "#FF0000"
+    # red
+    description: "PN532 NFC RFID reader (I2C)."
+
+  - type: "relay_module_dc"
+    name: "Relay Module1"
+    color: "red"
+    # blue
+    description: "5V relay module controlling a 12V load (COM/NO/NC)."
+
+  - type: "relay_module_dc"
+    name: "Relay Module2"
+    color: "red"
+    # blue
+    description: "5V relay module controlling a 12V load (COM/NO/NC)."
+
+  - name: "Unlock Button"
+    description: "Unlock push button"
+    color: "#228B22"
+    pins:
+      - name: "+"
+        role: "GPIO"
+      - name: "-"
+        role: "GND"
+
+  - name: "Lock Button"
+    description: "Lock push button"
+    color: "#FF0000"
+    pins:
+      - name: "+"
+        role: "GPIO"
+      - name: "-"
+        role: "GND"
+
+  - type: "power_supply"
+    name: "5V Power Supply"
+
+  # - type: "buck_converter"
+  #   name: "12V to 5V Buck Converter"
+
+  - type: "door_latch"
+    name: "12V Door Latch"
+
+  - name: "3D Printed Case"
+    description: "Mechanical enclosure"
+    pins:
+      - name: "mount"
+        role: "GPIO"
+
+connections:
+  # PN532 NFC Reader (I2C) - powered from buck converter
+  # - from: {device: "12V to 5V Buck Converter", device_pin: "VOUT_3V3"}
+  #   to:   {device: "PN532 NFC Reader", device_pin: "VCC"}
+
+  # - from: {device: "12V to 5V Buck Converter", device_pin: "GND_OUT"}
+  #   to:   {device: "PN532 NFC Reader", device_pin: "GND"}
+
+  - board_pin: 6      # 3.3V
+    device: "proto breadboard"
+    device_pin: "30-"
+    color: "black"
+
+  - board_pin: 4      # GPIO2 (I2C SDA)
+    device: "Relay Module1"
+    device_pin: "NC"
+    color: "red"
+
+  - board_pin: 3      # GPIO2 (I2C SDA)
+    device: "PN532 NFC Reader"
+    device_pin: "SDA"
+    color: "#808080"
+
+  - board_pin: 5      # GPIO3 (I2C SCL)
+    device: "PN532 NFC Reader"
+    device_pin: "SCL"
+    color: "purple"
+
+  # Relay Module (GPIO 17 = physical pin 11)
+  # - board_pin: 9      # GPIO17 - Relay control signal
+  #   device: "Relay Module1"
+  #   device_pin: "IN"
+
+  # - from: {device: "12V to 5V Buck Converter", device_pin: "VOUT_5V"}
+  #   to:   {device: "Relay Module", device_pin: "DC+"}
+
+  # - board_pin: 33       # GND
+  #   device: "Relay Module1"
+  #   device_pin: "DC-"
+
+# x
+  # Unlock Button (GPIO 27 = physical pin 13)
+  - board_pin: 34      # GPIO27
+    device: "Unlock Button"
+    device_pin: "+"
+    color: "yellow"
+
+  - board_pin: 11      # GND
+    device: "Relay Module2"
+    device_pin: "IN"
+    color: "orange"
+
+
+# x
+  - board_pin: 13      # GND
+    device: "Unlock Button"
+    device_pin: "-"
+    color: "#228B22"
+
+  # Lock Button (GPIO 22 = physical pin 15)
+  - board_pin: 15      # GPIO22
+    device: "Lock Button"
+    device_pin: "+"
+    color: "blue"
+
+  - board_pin: 30      # GND
+    device: "Lock Button"
+    device_pin: "-"
+    color: "purple"
+
+  # Power and device-to-device connections
+  - from: {device: "5V Power Supply", device_pin: "out1+"}
+    to:   {device: "Relay Module1", device_pin: "COM"}
+
+  - from: {device: "Relay Module1", device_pin: "NO"}
+    to:   {device: "12V Door Latch", device_pin: "POWER"}
+
+  - from: {device: "5V Power Supply", device_pin: "out1-"}
+    to:   {device: "12V Door Latch", device_pin: "GND"}
+
+  # - from: {device: "5V Power Supply", device_pin: "out2+"}
+  #   to:   {device: "12V to 5V Buck Converter", device_pin: "VIN"}
+
+  - from: {device: "proto breadboard", device_pin: "28+"}
+    to:   {device: "PN532 NFC Reader", device_pin: "VCC"}
+
+  - from: {device: "proto breadboard", device_pin: "28-"}
+    to:   {device: "PN532 NFC Reader", device_pin: "GND"}
+
+
+  - from: {device: "proto breadboard", device_pin: "27-"}
+    to:   {device: "5V Power Supply", device_pin: "out1-"}
+    color: "black"
+  - from: {device: "Relay Module2", device_pin: "DC-"}
+    to:   {device: "5V Power Supply", device_pin: "out2-"}
+    color: "black"
+
+
+# Notes (moved to comments because top-level 'notes' is not supported by PinViz schema):
+# CONFIG:
+#   RELAY_PIN: 17  # Relay control pin for the door latch
+#   BUTTON_UNLOCK_PIN: 27  # Unlock button pin
+#   BUTTON_LOCK_PIN: 22  # Lock button pin
+#
+# EXAMPLE CODE:
+#   import RPi.GPIO as GPIO
+#   GPIO.setmode(GPIO.BCM)
+#   GPIO.setup(RELAY_PIN, GPIO.OUT)
+#   GPIO.setup(BUTTON_UNLOCK_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+#   GPIO.setup(BUTTON_LOCK_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+#
+#   # Initially, keep the relay off (door locked)
+#   GPIO.output(RELAY_PIN, GPIO.LOW)
+#
+#   import busio, board
+#   from adafruit_pn532.i2c import PN532_I2C
+#   i2c = busio.I2C(board.SCL, board.SDA)
+#   pn532 = PN532_I2C(i2c, debug=False)
+#   pn532.SAM_configuration()
+#   logger.info("PN532 RFID reader initialized")
+#
+# POWER NOTES:
+#   - Relay switches 12V from the power supply to the door latch.
+#   - Buck converter can supply 5V/3.3V as needed for peripherals.
