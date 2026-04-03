@@ -160,7 +160,7 @@ jobs:
       - name: Create systemd drop-in with environment (DOOR_CREDS_FILE and health credentials)
         run: |
           DEPLOY_DIR=${DEPLOY_DIR:-/opt/door}
-          sudo cp door-app.service /etc/systemd/system/door-app.service
+          sudo cp ${DEPLOY_DIR}/door-app.service /etc/systemd/system/door-app.service
           sudo mkdir -p /etc/systemd/system/door-app.service.d
           sudo bash -c 'cat > /etc/systemd/system/door-app.service.d/override.conf <<EOF
           [Service]
