@@ -130,20 +130,45 @@ jobs:
         with:
           name: deploy-artifact
           path: .
+      - name: Stop door service
+        run: |
+          sudo systemctl stop door-app.service || true
+      - name: Archive old service
+        run: |
+          DEPLOY_DIR=${DEPLOY_DIR:-/opt/door}
+          rm -rf "$DEPLOY_DIR/venv"
+          rm -rf "$DEPLOY_DIR/../archive"
+          sudo mv -p "$DEPLOY_DIR" "$DEPLOY_DIR/../archive"
+        env:
+          DEPLOY_DIR: ${{ vars.DEPLOY_DIR }}
 
       - name: Prepare deployment directory
         run: |
           DEPLOY_DIR=${DEPLOY_DIR:-/opt/door}
           sudo mkdir -p "$DEPLOY_DIR"
+          sudo mkdir -p "$DEPLOY_DIR/../logs"
+          sudo mkdir -p "$DEPLOY_DIR/../metrics"
           sudo chown $(whoami) "$DEPLOY_DIR"
         env:
           DEPLOY_DIR: ${{ vars.DEPLOY_DIR }}
+
 
       - name: Unpack artifact to deploy dir
         run: |
           DEPLOY_DIR=${DEPLOY_DIR:-/opt/door}
           unzip -o deploy.zip -d "$DEPLOY_DIR"
           ls -l "$DEPLOY_DIR"
+        env:
+          DEPLOY_DIR: ${{ vars.DEPLOY_DIR }}
+
+      - name: Set up Python virtual environment and install dependencies
+        run: |
+          DEPLOY_DIR=${DEPLOY_DIR:-/opt/door}
+          python3 -m venv "$DEPLOY_DIR/venv"
+          source "$DEPLOY_DIR/venv/bin/activate"
+          pip install --upgrade pip
+          pip install -r "$DEPLOY_DIR/requirements.txt"
+          deactivate
         env:
           DEPLOY_DIR: ${{ vars.DEPLOY_DIR }}
 
@@ -168,6 +193,10 @@ jobs:
           Environment="DOOR_HEALTH_USERNAME=${{ secrets.DOOR_HEALTH_USERNAME }}"
           Environment="DOOR_HEALTH_PASSWORD=${{ secrets.DOOR_HEALTH_PASSWORD }}"
           Environment="DOOR_HEALTH_PORT=${{ vars.DOOR_HEALTH_PORT }}"
+          Environment="LOG_FILE=${DEPLOY_DIR}/../logs/door_controller.log"
+          Environment="WATCHDOG_LOG_FILE=${DEPLOY_DIR}/../logs/door_controller_watchdog_heartbeat.log"
+          Environment="METRICS_DB_PATH=${DEPLOY_DIR}/../metrics/metrics.db"
+          Environment="CSV_FILE=${DEPLOY_DIR}/../google_sheet_data.csv"
           EOF'
           sudo systemctl daemon-reload
         env:
