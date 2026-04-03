@@ -138,7 +138,7 @@ jobs:
           DEPLOY_DIR=${DEPLOY_DIR:-/opt/door}
           rm -rf "$DEPLOY_DIR/venv"
           rm -rf "$DEPLOY_DIR/../archive"
-          sudo mv -p "$DEPLOY_DIR" "$DEPLOY_DIR/../archive"
+          sudo mv "$DEPLOY_DIR" "$DEPLOY_DIR/../archive"
         env:
           DEPLOY_DIR: ${{ vars.DEPLOY_DIR }}
 
