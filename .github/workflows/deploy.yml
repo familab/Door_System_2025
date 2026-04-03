@@ -96,30 +96,30 @@ jobs:
           path: build/deploy.zip
           retention-days: ${{ env.retention_days }}
 
-  await_approval:
-    name: Await Manual Approval
-    needs: build_package
-    runs-on: ubuntu-latest
-    timeout-minutes: 1
-    steps:
-      - name: Await manual approval
-        uses: trstringer/manual-approval@v1
-        with:
-          secret: ${{ secrets.GITHUB_TOKEN }}
-          approvers: lastlink
-          minimum-approvals: 1
-          issue-title: "Deploying ${{ needs.build_package.outputs.VERSION }} to production"
-          issue-body: "Please approve or deny the deployment of version ${{ needs.build_package.outputs.VERSION }} (commit: ${{ github.sha }})."
-          issue-body-file-path: ''
-          exclude-workflow-initiator-as-approver: false
-          fail-on-denial: true
-          additional-approved-words: ''
-          additional-denied-words: ''
-          polling-interval-seconds: 10
+  # await_approval:
+  #   name: Await Manual Approval
+  #   needs: build_package
+  #   runs-on: ubuntu-latest
+  #   timeout-minutes: 1
+  #   steps:
+  #     - name: Await manual approval
+  #       uses: trstringer/manual-approval@v1
+  #       with:
+  #         secret: ${{ secrets.GITHUB_TOKEN }}
+  #         approvers: lastlink
+  #         minimum-approvals: 1
+  #         issue-title: "Deploying ${{ needs.build_package.outputs.VERSION }} to production"
+  #         issue-body: "Please approve or deny the deployment of version ${{ needs.build_package.outputs.VERSION }} (commit: ${{ github.sha }})."
+  #         issue-body-file-path: ''
+  #         exclude-workflow-initiator-as-approver: false
+  #         fail-on-denial: true
+  #         additional-approved-words: ''
+  #         additional-denied-words: ''
+  #         polling-interval-seconds: 10
 
   deploy:
     name: Deploy to production
-    needs: [build_package, await_approval]
+    needs: [build_package]
     runs-on: [self-hosted]
     environment: production
     env:
@@ -142,7 +142,7 @@ jobs:
       - name: Unpack artifact to deploy dir
         run: |
           DEPLOY_DIR=${DEPLOY_DIR:-/opt/door}
-          unzip -o build/deploy.zip -d "$DEPLOY_DIR"
+          unzip -o deploy.zip -d "$DEPLOY_DIR"
           ls -l "$DEPLOY_DIR"
         env:
           DEPLOY_DIR: ${{ vars.DEPLOY_DIR }}
