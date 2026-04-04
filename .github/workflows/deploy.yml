@@ -190,7 +190,7 @@ jobs:
           sudo mkdir -p /etc/systemd/system/door-app.service.d
           sudo bash -c 'cat > /etc/systemd/system/door-app.service.d/override.conf <<EOF
           [Service]
-          Environment="DOOR_CREDS_FILE=${DEPLOY_DIR}/creds.json"
+          Environment="DOOR_CREDS_FILE=${{ vars.DEPLOY_DIR }}/creds.json"
           Environment="DOOR_HEALTH_USERNAME=${{ secrets.DOOR_HEALTH_USERNAME }}"
           Environment="DOOR_HEALTH_PASSWORD=${{ secrets.DOOR_HEALTH_PASSWORD }}"
           Environment="DOOR_HEALTH_PORT=${{ vars.DOOR_HEALTH_PORT }}"
@@ -199,6 +199,16 @@ jobs:
           Environment="DOOR_METRICS_DB_PATH=${{ vars.DEPLOY_DIR }}/../metrics/metrics.db"
           Environment="DOOR_CSV_FILE=${{ vars.DEPLOY_DIR }}/../google_sheet_data.csv"
           EOF'
+          cat > ${DEPLOY_DIR}/local.env <<EOF
+          DOOR_CREDS_FILE=${{ vars.DEPLOY_DIR }}/creds.json
+          DOOR_HEALTH_USERNAME=${{ secrets.DOOR_HEALTH_USERNAME }}
+          DOOR_HEALTH_PASSWORD=${{ secrets.DOOR_HEALTH_PASSWORD }}
+          DOOR_HEALTH_PORT=${{ vars.DOOR_HEALTH_PORT }}
+          DOOR_LOG_FILE=${{ vars.DEPLOY_DIR }}/../logs/door_controller.log
+          DOOR_WATCHDOG_LOG_FILE=${{ vars.DEPLOY_DIR }}/../logs/door_controller_watchdog_heartbeat.log
+          DOOR_METRICS_DB_PATH=${{ vars.DEPLOY_DIR }}/../metrics/metrics.db
+          DOOR_CSV_FILE=${{ vars.DEPLOY_DIR }}/../google_sheet_data.csv
+          EOF
           sudo systemctl daemon-reload
         env:
           DEPLOY_DIR: ${{ vars.DEPLOY_DIR }}
