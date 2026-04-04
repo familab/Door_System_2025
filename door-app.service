@@ -2,7 +2,7 @@
 Description=Door Controller - RFID Access Control System
 After=network-online.target
 Wants=network-online.target
-Documentation=https://github.com/lastlink/familab_badge_scanner
+Documentation=https://github.com/familab/NFC_Door_Access
 
 [Service]
 Type=simple
@@ -26,7 +26,7 @@ TimeoutStopSec=10
 # PrivateTmp=true
 # ProtectSystem=strict
 # ProtectHome=true
-# ReadWritePaths=/tmp /home/pi/badge_scanner/app
+# ReadWritePaths=/tmp /home/pi/badge_scanner
 # SupplementaryGroups=i2c
 
 # Resource limits
