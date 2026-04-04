@@ -148,7 +148,9 @@ jobs:
           sudo mkdir -p "$DEPLOY_DIR"
           sudo mkdir -p "$DEPLOY_DIR/../logs"
           sudo mkdir -p "$DEPLOY_DIR/../metrics"
-          sudo chown -R pi:pi "$DEPLOY_DIR/../"
+          sudo mkdir -p "$DEPLOY_DIR/../data"
+          sudo chown -R pi:pi "$DEPLOY_DIR"
+          sudo chown pi:pi "$DEPLOY_DIR/../logs" "$DEPLOY_DIR/../metrics" "$DEPLOY_DIR/../data"
         env:
           DEPLOY_DIR: ${{ vars.DEPLOY_DIR }}
 
@@ -197,7 +199,7 @@ jobs:
           Environment="DOOR_LOG_FILE=${{ vars.DEPLOY_DIR }}/../logs/door_controller.log"
           Environment="DOOR_WATCHDOG_LOG_FILE=${{ vars.DEPLOY_DIR }}/../logs/door_controller_watchdog_heartbeat.log"
           Environment="DOOR_METRICS_DB_PATH=${{ vars.DEPLOY_DIR }}/../metrics/metrics.db"
-          Environment="DOOR_CSV_FILE=${{ vars.DEPLOY_DIR }}/../google_sheet_data.csv"
+          Environment="DOOR_CSV_FILE=${{ vars.DEPLOY_DIR }}/../data/google_sheet_data.csv"
           EOF'
           cat > ${DEPLOY_DIR}/local.env <<EOF
           DOOR_CREDS_FILE=${{ vars.DEPLOY_DIR }}/creds.json
@@ -207,7 +209,7 @@ jobs:
           DOOR_LOG_FILE=${{ vars.DEPLOY_DIR }}/../logs/door_controller.log
           DOOR_WATCHDOG_LOG_FILE=${{ vars.DEPLOY_DIR }}/../logs/door_controller_watchdog_heartbeat.log
           DOOR_METRICS_DB_PATH=${{ vars.DEPLOY_DIR }}/../metrics/metrics.db
-          DOOR_CSV_FILE=${{ vars.DEPLOY_DIR }}/../google_sheet_data.csv
+          DOOR_CSV_FILE=${{ vars.DEPLOY_DIR }}/../data/google_sheet_data.csv
           EOF
           sudo systemctl daemon-reload
         env:
