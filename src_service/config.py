@@ -188,7 +188,8 @@ class Config:
                 if isinstance(self.config[config_key], bool):
                     self.config[config_key] = value.lower() in ("true", "1", "yes", "on")
                 elif isinstance(self.config[config_key], int):
-                    self.config[config_key] = int(value)
+                    if value.strip():
+                        self.config[config_key] = int(value)
                 elif isinstance(self.config[config_key], (list, dict)):
                     try:
                         self.config[config_key] = json.loads(value)
