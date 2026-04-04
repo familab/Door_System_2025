@@ -1,6 +1,7 @@
 # Core dependencies for Door Controller
 # Raspberry Pi GPIO control
-RPi.GPIO==0.7.1; sys_platform != 'win32'
+# sudo apt install python3-rpi-lgpio
+# from RPi import GPIO
 # Windows-friendly emulator (used automatically on Windows)
 
 # Google Sheets integration

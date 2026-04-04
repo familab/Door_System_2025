@@ -164,6 +164,7 @@ jobs:
       - name: Set up Python virtual environment and install dependencies
         run: |
           DEPLOY_DIR=${DEPLOY_DIR:-/opt/door}
+          sudo apt install python3-rpi-lgpio
           python3 -m venv "$DEPLOY_DIR/venv"
           source "$DEPLOY_DIR/venv/bin/activate"
           pip install --upgrade pip
