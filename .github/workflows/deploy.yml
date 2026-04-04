@@ -194,10 +194,10 @@ jobs:
           Environment="DOOR_HEALTH_USERNAME=${{ secrets.DOOR_HEALTH_USERNAME }}"
           Environment="DOOR_HEALTH_PASSWORD=${{ secrets.DOOR_HEALTH_PASSWORD }}"
           Environment="DOOR_HEALTH_PORT=${{ vars.DOOR_HEALTH_PORT }}"
-          Environment="DOOR_LOG_FILE=${DEPLOY_DIR}/../logs/door_controller.log"
-          Environment="DOOR_WATCHDOG_LOG_FILE=${DEPLOY_DIR}/../logs/door_controller_watchdog_heartbeat.log"
-          Environment="DOOR_METRICS_DB_PATH=${DEPLOY_DIR}/../metrics/metrics.db"
-          Environment="DOOR_CSV_FILE=${DEPLOY_DIR}/../google_sheet_data.csv"
+          Environment="DOOR_LOG_FILE=${{ vars.DEPLOY_DIR }}/../logs/door_controller.log"
+          Environment="DOOR_WATCHDOG_LOG_FILE=${{ vars.DEPLOY_DIR }}/../logs/door_controller_watchdog_heartbeat.log"
+          Environment="DOOR_METRICS_DB_PATH=${{ vars.DEPLOY_DIR }}/../metrics/metrics.db"
+          Environment="DOOR_CSV_FILE=${{ vars.DEPLOY_DIR }}/../google_sheet_data.csv"
           EOF'
           sudo systemctl daemon-reload
         env:
