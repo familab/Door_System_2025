@@ -148,9 +148,9 @@ jobs:
           sudo mkdir -p "$DEPLOY_DIR"
           sudo mkdir -p "$DEPLOY_DIR/../logs"
           sudo mkdir -p "$DEPLOY_DIR/../metrics"
-          sudo chown pi:pi "$DEPLOY_DIR"
-          sudo chown pi:pi "$DEPLOY_DIR"/../logs"
-          sudo chown pi:pi "$DEPLOY_DIR"/../metrics"
+          sudo chown -R pi:pi "$DEPLOY_DIR"
+          sudo chown -R pi:pi "$DEPLOY_DIR/../logs"
+          sudo chown -R pi:pi "$DEPLOY_DIR/../metrics"
         env:
           DEPLOY_DIR: ${{ vars.DEPLOY_DIR }}
 
