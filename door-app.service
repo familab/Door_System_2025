@@ -10,8 +10,8 @@ User=pi
 # Group=gpio
 WorkingDirectory=/home/pi/badge_scanner/app
 Environment=PYTHONUNBUFFERED=1
-# Ensure /tmp exists and write initial watchdog heartbeat (tolerate failure)
-ExecStartPre=/bin/sh -c 'mkdir -p /tmp && echo "0" > /tmp/door_controller_watchdog.txt || true'
+# Ensure required directories exist and write initial watchdog heartbeat (tolerate failure)
+ExecStartPre=/bin/sh -c 'mkdir -p /tmp /home/pi/badge_scanner/logs /home/pi/badge_scanner/metrics && echo "0" > /tmp/door_controller_watchdog.txt || true'
 # Verify Python in virtualenv is executable
 ExecStartPre=/bin/sh -c 'test -x /home/pi/badge_scanner/app/venv/bin/python3 || (echo "Missing venv python" >&2; exit 1)'
 ExecStart=/home/pi/badge_scanner/app/venv/bin/python3 /home/pi/badge_scanner/app/start.py
