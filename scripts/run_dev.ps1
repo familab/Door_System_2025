@@ -21,6 +21,7 @@ if ($Install) {
     }
     else {
         pip install -r requirements.txt
+        pip install -r requirements.dev.txt
     }
 
     # Attempt to install one of several optional emulator packages (no-op if already present)

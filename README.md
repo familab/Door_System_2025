@@ -190,6 +190,26 @@ Development helper scripts:
 - Windows PowerShell: `.\scripts\run_dev.ps1 -Install` (installs dependencies and runs `start.py`)
 - Linux/macOS: `./scripts/run_dev.sh install` (installs dependencies and runs `start.py`)
 
+## Deploy
+* install github runner
+* install pyenv.
+```sh
+curl https://pyenv.run | bash
+export PATH="$HOME/.pyenv/bin:$PATH"
+eval "$(pyenv init -)"
+eval "$(pyenv virtualenv-init -)"
+```
+* increase tmp size
+```sh
+sudo mount -o remount,size=2G /tmp
+```
+* install python 12
+```sh
+pyenv install 3.12
+pyenv global 3.12
+```
+
+
 ## Running the Application
 
 ### Manual Execution

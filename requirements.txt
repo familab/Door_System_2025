@@ -6,6 +6,8 @@ RPi.GPIO==0.7.1; sys_platform != 'win32'
 # Google Sheets integration
 # Note: imports are now lazy in start.py so missing packages don't crash startup
 gspread==6.2.1
+# oauth2client is deprecated but functional through Python 3.13.
+# pkg_resources usage is from setuptools; no known breaking change in 3.13.
 oauth2client==4.1.3
 
 # Adafruit PN532 NFC/RFID reader
@@ -23,14 +25,11 @@ google-auth==2.48.0
 google-auth-oauthlib==1.2.1
 httplib2==0.31.2
 
-# Test reporting for CI
-xmlrunner==1.7.7
-
 # Standard library enhancements (Python compatibility)
 typing-extensions==4.15.0
 # required for google auth
 cryptography>=38.0.0
 # required for ssl generation better to do locally and copy cert
-# cryptography==3.3.2
+cryptography>=38.0.0
 
 
