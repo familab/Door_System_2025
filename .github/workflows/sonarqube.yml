@@ -112,15 +112,17 @@ jobs:
           echo "version.txt content:"
           cat version-$VERSION.txt
 
-      - name: Set up Python 3.9
+      - name: Set up Python 3.13
         uses: actions/setup-python@v5
         with:
-          python-version: "3.9"
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: requirements.dev.txt
 
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
+          pip install -r requirements.dev.txt
           pip install coverage
 
       - name: Run tests with coverage
@@ -143,7 +145,7 @@ jobs:
             -Dsonar.exclusions=**/node_modules/**,**/dist/**,**/target/**,**/coverage/**,**/reports/**,**/android/**,**/ios/**,**/__pycache__/**,**/venv/**,**/.venv/**
             -Dsonar.test.inclusions=tests/**/*.py
             -Dsonar.test.exclusions=**/__pycache__/**,**/venv/**,**/.venv/**
-            -Dsonar.python.version=3.9
+            -Dsonar.python.version=3.13
             -Dsonar.python.coverage.reportPaths=coverage.xml
             -Dsonar.sourceEncoding=UTF-8
 

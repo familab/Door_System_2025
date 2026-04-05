@@ -85,8 +85,8 @@ jobs:
       - name: Create deploy zip
         run: |
           mkdir -p build
-          # Include README, markdown files, service files, version txt, main.py, src_service, requirements.txt
-          zip -r build/deploy.zip README.md *.md *.service version*.txt main.py src_service requirements.txt || true
+          # Include README, markdown files, service files, version txt, start.py, src_service, requirements.txt
+          zip -r build/deploy.zip README.md *.md *.service version*.txt start.py src_service requirements.txt || true
           ls -l build
 
       - name: Upload deploy artifact
@@ -130,14 +130,30 @@ jobs:
         with:
           name: deploy-artifact
           path: .
+      - name: Stop door service
+        run: |
+          sudo systemctl stop door-app.service || true
+      - name: Archive old service
+        run: |
+          DEPLOY_DIR=${DEPLOY_DIR:-/opt/door}
+          rm -rf "$DEPLOY_DIR/venv"
+          sudo rm -rf "$DEPLOY_DIR/../archive"
+          sudo mv "$DEPLOY_DIR" "$DEPLOY_DIR/../archive" || true
+        env:
+          DEPLOY_DIR: ${{ vars.DEPLOY_DIR }}
 
       - name: Prepare deployment directory
         run: |
           DEPLOY_DIR=${DEPLOY_DIR:-/opt/door}
           sudo mkdir -p "$DEPLOY_DIR"
-          sudo chown $(whoami) "$DEPLOY_DIR"
+          sudo mkdir -p "$DEPLOY_DIR/../logs"
+          sudo mkdir -p "$DEPLOY_DIR/../metrics"
+          sudo mkdir -p "$DEPLOY_DIR/../data"
+          sudo chown -R pi:pi "$DEPLOY_DIR"
+          sudo chown pi:pi "$DEPLOY_DIR/../logs" "$DEPLOY_DIR/../metrics" "$DEPLOY_DIR/../data"
         env:
           DEPLOY_DIR: ${{ vars.DEPLOY_DIR }}
+
 
       - name: Unpack artifact to deploy dir
         run: |
@@ -147,27 +163,54 @@ jobs:
         env:
           DEPLOY_DIR: ${{ vars.DEPLOY_DIR }}
 
+      - name: Set up Python virtual environment and install dependencies
+        run: |
+          DEPLOY_DIR=${DEPLOY_DIR:-/opt/door}
+          sudo apt install python3-rpi-lgpio
+          python3 -m venv "$DEPLOY_DIR/venv"
+          source "$DEPLOY_DIR/venv/bin/activate"
+          pip install --upgrade pip
+          pip install -r "$DEPLOY_DIR/requirements.txt"
+          deactivate
+        env:
+          DEPLOY_DIR: ${{ vars.DEPLOY_DIR }}
+
       - name: Write Google service account credentials (if provided)
         if: ${{ env.CREDS_JSON != '' }}
         run: |
           DEPLOY_DIR=${DEPLOY_DIR:-/opt/door}
           echo "Writing creds to $DEPLOY_DIR/creds.json"
-          echo "${{ env.CREDS_JSON }}" | sudo tee "$DEPLOY_DIR/creds.json" > /dev/null
-          sudo chmod 600 "$DEPLOY_DIR/creds.json"
+          echo "$CREDS_JSON" | sudo tee "$DEPLOY_DIR/creds.json" > /dev/null
+          sudo chown pi:pi "$DEPLOY_DIR/creds.json"
         env:
           DEPLOY_DIR: ${{ vars.DEPLOY_DIR }}
 
       - name: Create systemd drop-in with environment (DOOR_CREDS_FILE and health credentials)
         run: |
           DEPLOY_DIR=${DEPLOY_DIR:-/opt/door}
+          sudo cp ${DEPLOY_DIR}/door-app.service /etc/systemd/system/door-app.service
           sudo mkdir -p /etc/systemd/system/door-app.service.d
           sudo bash -c 'cat > /etc/systemd/system/door-app.service.d/override.conf <<EOF
           [Service]
-          Environment="DOOR_CREDS_FILE=${DEPLOY_DIR}/creds.json"
+          Environment="DOOR_CREDS_FILE=${{ vars.DEPLOY_DIR }}/creds.json"
           Environment="DOOR_HEALTH_USERNAME=${{ secrets.DOOR_HEALTH_USERNAME }}"
           Environment="DOOR_HEALTH_PASSWORD=${{ secrets.DOOR_HEALTH_PASSWORD }}"
           Environment="DOOR_HEALTH_PORT=${{ vars.DOOR_HEALTH_PORT }}"
+          Environment="DOOR_LOG_FILE=${{ vars.DEPLOY_DIR }}/../logs/door_controller.log"
+          Environment="DOOR_WATCHDOG_LOG_FILE=${{ vars.DEPLOY_DIR }}/../logs/door_controller_watchdog_heartbeat.log"
+          Environment="DOOR_METRICS_DB_PATH=${{ vars.DEPLOY_DIR }}/../metrics/metrics.db"
+          Environment="DOOR_CSV_FILE=${{ vars.DEPLOY_DIR }}/../data/google_sheet_data.csv"
           EOF'
+          cat > ${DEPLOY_DIR}/local.env <<EOF
+          DOOR_CREDS_FILE=${{ vars.DEPLOY_DIR }}/creds.json
+          DOOR_HEALTH_USERNAME=${{ secrets.DOOR_HEALTH_USERNAME }}
+          DOOR_HEALTH_PASSWORD=${{ secrets.DOOR_HEALTH_PASSWORD }}
+          DOOR_HEALTH_PORT=${{ vars.DOOR_HEALTH_PORT }}
+          DOOR_LOG_FILE=${{ vars.DEPLOY_DIR }}/../logs/door_controller.log
+          DOOR_WATCHDOG_LOG_FILE=${{ vars.DEPLOY_DIR }}/../logs/door_controller_watchdog_heartbeat.log
+          DOOR_METRICS_DB_PATH=${{ vars.DEPLOY_DIR }}/../metrics/metrics.db
+          DOOR_CSV_FILE=${{ vars.DEPLOY_DIR }}/../data/google_sheet_data.csv
+          EOF
           sudo systemctl daemon-reload
         env:
           DEPLOY_DIR: ${{ vars.DEPLOY_DIR }}

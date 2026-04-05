@@ -21,9 +21,13 @@ except Exception:
         # Some emulator packages may expose an alternative module name
         import RPi.GPIO_emulator as GPIO  # type: ignore
     except Exception:
-        # Local stub as final fallback
-        import importlib
-        GPIO = importlib.import_module('src_service.gpio_stub')
+        # Load stub directly by file path to avoid triggering src_service/__init__.py
+        # (which would load config before the app is ready)
+        import importlib.util as _ilu
+        _stub_path = os.path.join(os.path.dirname(__file__), "src_service", "gpio_stub.py")
+        _spec = _ilu.spec_from_file_location("gpio_stub", _stub_path)
+        GPIO = _ilu.module_from_spec(_spec)
+        _spec.loader.exec_module(GPIO)
         print("Warning: RPi.GPIO not found; using GPIO stub for development.")
 import time
 import threading

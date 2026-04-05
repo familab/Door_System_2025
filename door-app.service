@@ -2,19 +2,19 @@
 Description=Door Controller - RFID Access Control System
 After=network-online.target
 Wants=network-online.target
-Documentation=https://github.com/lastlink/familab_badge_scanner
+Documentation=https://github.com/familab/NFC_Door_Access
 
 [Service]
 Type=simple
 User=pi
 # Group=gpio
-WorkingDirectory=/home/pi/badge_scanner
+WorkingDirectory=/home/pi/badge_scanner/app
 Environment=PYTHONUNBUFFERED=1
-# Ensure /tmp exists and write initial watchdog heartbeat (tolerate failure)
-ExecStartPre=/bin/sh -c 'mkdir -p /tmp && echo "0" > /tmp/door_controller_watchdog.txt || true'
+# Ensure required directories exist and write initial watchdog heartbeat (tolerate failure)
+ExecStartPre=/bin/sh -c 'mkdir -p /tmp /home/pi/badge_scanner/logs /home/pi/badge_scanner/metrics && echo "0" > /tmp/door_controller_watchdog.txt || true'
 # Verify Python in virtualenv is executable
-ExecStartPre=/bin/sh -c 'test -x /home/pi/badge_scanner/venv/bin/python3 || (echo "Missing venv python" >&2; exit 1)'
-ExecStart=/home/pi/badge_scanner/venv/bin/python3 /home/pi/badge_scanner/start.py
+ExecStartPre=/bin/sh -c 'test -x /home/pi/badge_scanner/app/venv/bin/python3 || (echo "Missing venv python" >&2; exit 1)'
+ExecStart=/home/pi/badge_scanner/app/venv/bin/python3 /home/pi/badge_scanner/app/start.py
 StandardOutput=journal
 StandardError=journal
 Restart=always
