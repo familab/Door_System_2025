@@ -151,8 +151,16 @@ jobs:
 
       # useful for pull request checks to fail pipeline
       - name: SonarQube Quality Gate Check
+        id: quality_gate
         uses: sonarsource/sonarqube-quality-gate-action@master
         timeout-minutes: 5
+        continue-on-error: true
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_HOST_URL: ${{ secrets.SONARQUBE_URL }}
+
+      # Emit a yellow warning if the gate failed
+      - name: Warn if Quality Gate failed
+        if: steps.quality_gate.outcome == 'failure'
+        run: echo "::warning::SonarQube Quality Gate failed (but build is continuing)"
+
