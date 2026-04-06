@@ -65,6 +65,7 @@ DEFAULT_CONFIG = {
     "AUTH_SESSION_COOKIE_NAME": "door_session",
     "AUTH_WHITELIST_EMAILS": [],
     "AUTH_WHITELIST_DOMAINS": [],
+    "AUTH_FAIL_THROTTLE_SECONDS": 15,  # Seconds to block next auth attempt after a failure
 
     # Google OAuth2
     "GOOGLE_OAUTH_ENABLED": False,

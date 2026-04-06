@@ -14,9 +14,46 @@ _SESSION_STORE = {}
 _OAUTH_STATE_STORE = {}
 _OAUTH_STATE_TTL_SECONDS = 600
 
+# Maps source IP -> timestamp until which auth is throttled
+_AUTH_THROTTLE_STORE: dict = {}
+
 
 def _now_ts() -> int:
     return int(time.time())
+
+
+def _get_client_ip(handler) -> str:
+    try:
+        xff = handler.headers.get("X-Forwarded-For") if hasattr(handler, "headers") else None
+        if xff:
+            return xff.split(",")[0].strip()
+        return handler.client_address[0]
+    except Exception:
+        return "unknown"
+
+
+def record_auth_failure(handler) -> None:
+    """Record a failed auth attempt and throttle the source IP."""
+    try:
+        throttle_seconds = int(config.get("AUTH_FAIL_THROTTLE_SECONDS", 15))
+    except Exception:
+        throttle_seconds = 15
+    ip = _get_client_ip(handler)
+    _AUTH_THROTTLE_STORE[ip] = _now_ts() + throttle_seconds
+    get_logger().warning(f"Auth failure from {ip}; throttling for {throttle_seconds}s")
+
+
+def is_throttled(handler) -> bool:
+    """Return True if the source IP is currently throttled due to a recent auth failure."""
+    ip = _get_client_ip(handler)
+    until = _AUTH_THROTTLE_STORE.get(ip, 0)
+    if until > _now_ts():
+        remaining = until - _now_ts()
+        get_logger().warning(f"Auth throttled for {ip} ({remaining}s remaining)")
+        return True
+    # Clean up expired entry
+    _AUTH_THROTTLE_STORE.pop(ip, None)
+    return False
 
 
 def _session_cookie_name() -> str:
@@ -109,6 +146,8 @@ def clear_session_cookie(handler) -> None:
 
 def check_basic_auth(handler) -> bool:
     """Check HTTP Basic Auth. Returns True if authenticated."""
+    if is_throttled(handler):
+        return False
     auth_header = None
     try:
         auth_header = handler.headers.get("Authorization") if hasattr(handler, "headers") else None
@@ -126,12 +165,16 @@ def check_basic_auth(handler) -> bool:
             return False
         decoded = base64.b64decode(auth_data).decode("utf-8")
         username, password = decoded.split(":", 1)
-        return (
+        ok = (
             username == config["HEALTH_SERVER_USERNAME"]
             and password == config["HEALTH_SERVER_PASSWORD"]
         )
+        if not ok:
+            record_auth_failure(handler)
+        return ok
     except Exception as exc:
         get_logger().warning(f"Auth check failed: {exc}")
+        record_auth_failure(handler)
         return False
 
 

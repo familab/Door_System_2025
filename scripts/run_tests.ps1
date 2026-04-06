@@ -12,42 +12,52 @@ Write-Host "==============================" -ForegroundColor Cyan
 Write-Host ""
 
 # Activate virtual environment if it exists
+$pythonExe = "python"
 if (Test-Path "venv\Scripts\Activate.ps1") {
-    Write-Host "Activating virtual environment..." -ForegroundColor Yellow
+    Write-Host "Activating virtual environment venv..." -ForegroundColor Yellow
     & "venv\Scripts\Activate.ps1"
+    $pythonExe = "venv\Scripts\python.exe"
+} elseif (Test-Path ".venv\Scripts\Activate.ps1") {
+    Write-Host "Activating virtual environment .venv..." -ForegroundColor Yellow
+    & ".venv\Scripts\Activate.ps1"
+    $pythonExe = ".venv\Scripts\python.exe"
+} elseif (Test-Path "venv\Scripts\python.exe") {
+    $pythonExe = "venv\Scripts\python.exe"
+} elseif (Test-Path ".venv\Scripts\python.exe") {
+    $pythonExe = ".venv\Scripts\python.exe"
 }
 
 # Check Python version
 Write-Host "Python version:" -ForegroundColor Green
-python --version
+& $pythonExe --version
 Write-Host ""
 
 switch ($Mode.ToLower()) {
     "quiet" {
         Write-Host "Running tests (quiet mode)..." -ForegroundColor Yellow
-        python -m unittest discover -s tests -p "test_*.py"
+        & $pythonExe -m unittest discover -s tests -p "test_*.py"
     }
     "verbose" {
         Write-Host "Running tests (verbose mode)..." -ForegroundColor Yellow
-        python -m unittest discover -s tests -p "test_*.py" -v
+        & $pythonExe -m unittest discover -s tests -p "test_*.py" -v
     }
     "coverage" {
         Write-Host "Running tests with coverage..." -ForegroundColor Yellow
 
         # Check if coverage is installed
-        $coverageInstalled = python -m pip list | Select-String "coverage"
+        $coverageInstalled = & $pythonExe -m pip list | Select-String "coverage"
         if (-not $coverageInstalled) {
             Write-Host "Installing coverage..." -ForegroundColor Yellow
-            python -m pip install coverage
+            & $pythonExe -m pip install coverage
         }
 
-        python -m coverage run -m unittest discover -s tests -p "test_*.py"
+        & $pythonExe -m coverage run -m unittest discover -s tests -p "test_*.py"
         Write-Host ""
         Write-Host "Coverage Report:" -ForegroundColor Green
-        python -m coverage report -m
+        & $pythonExe -m coverage report -m
         Write-Host ""
         Write-Host "Generating HTML coverage report..." -ForegroundColor Yellow
-        python -m coverage html
+        & $pythonExe -m coverage html
         Write-Host "HTML report generated in htmlcov\index.html" -ForegroundColor Green
     }
     "single" {
@@ -58,11 +68,11 @@ switch ($Mode.ToLower()) {
             exit 1
         }
         Write-Host "Running single test module: $TestModule" -ForegroundColor Yellow
-        python -m unittest "tests.$TestModule" -v
+        & $pythonExe -m unittest "tests.$TestModule" -v
     }
     default {
         Write-Host "Running tests (normal mode)..." -ForegroundColor Yellow
-        python -m unittest discover -s tests -p "test_*.py" -v
+        & $pythonExe -m unittest discover -s tests -p "test_*.py" -v
     }
 }
 
