@@ -29,8 +29,8 @@ httplib2==0.31.2
 # Standard library enhancements (Python compatibility)
 typing-extensions==4.15.0
 # required for google auth
-cryptography>=38.0.0
+cryptography>=46.0.7
 # required for ssl generation better to do locally and copy cert
-cryptography>=38.0.0
+cryptography>=46.0.7
 
 
