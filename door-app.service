@@ -18,7 +18,7 @@ ExecStart=/home/pi/badge_scanner/app/venv/bin/python3 /home/pi/badge_scanner/app
 StandardOutput=journal
 StandardError=journal
 Restart=always
-RestartSec=300
+RestartSec=30
 TimeoutStopSec=25
 SuccessExitStatus=
 
