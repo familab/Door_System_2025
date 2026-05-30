@@ -1,0 +1,108 @@
+name: .NET Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      runtime:
+        description: 'Target runtime identifier (RID) to publish for'
+        required: true
+        default: linux-arm
+        type: choice
+        options:
+          - linux-arm      # Raspberry Pi Zero W / 32-bit ARM
+          - linux-arm64    # 64-bit Raspberry Pi
+          - linux-x64
+          - win-x64
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write   # required to create a GitHub Release
+
+env:
+  DOTNET_NOLOGO: 'true'
+  DOTNET_CLI_TELEMETRY_OPTOUT: 'true'
+  PROJECT: netcore/DoorApp.Familab/src/DoorApp.Familab.csproj
+  SOLUTION: netcore/DoorApp.Familab/DoorApp.Familab.sln
+  RUNTIME: ${{ github.event.inputs.runtime || 'linux-arm' }}
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install GitVersion
+        uses: gittools/actions/gitversion/setup@v4.1.0
+        with:
+          versionSpec: '6.3.x'
+
+      - name: Determine Version
+        id: version_step
+        uses: gittools/actions/gitversion/execute@v4.1.0
+        env:
+          DOTNET_GITVERSION_TELEMETRY_OPTOUT: 1
+        with:
+          configFilePath: ./GitVersion.yml
+
+      - name: Write version file
+        run: |
+          VERSION="${{ steps.version_step.outputs.SemVer }}"
+          MAJOR_MINOR_PATCH="${{ steps.version_step.outputs.MajorMinorPatch }}"
+          cat > version-$VERSION.txt << EOF
+          version=$VERSION
+          major_minor_patch=$MAJOR_MINOR_PATCH
+          full_semver=${{ steps.version_step.outputs.FullSemVer }}
+          git_hash=${{ steps.version_step.outputs.Sha }}
+          EOF
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+        id: extract
+
+      - name: Update AssemblyInfo version
+        run: |
+          chmod +x netcore/DoorApp.Familab/scripts/updateVersionNetcore.sh
+          bash netcore/DoorApp.Familab/scripts/updateVersionNetcore.sh "${{ steps.extract.outputs.VERSION }}"
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restore
+        run: dotnet restore ${{ env.SOLUTION }}
+
+      - name: Test (release)
+        run: dotnet test ${{ env.SOLUTION }} --configuration Release
+
+      - name: Publish self-contained release for ${{ env.RUNTIME }}
+        run: >
+          dotnet publish ${{ env.PROJECT }}
+          --configuration Release
+          --runtime ${{ env.RUNTIME }}
+          --self-contained true
+          -p:PublishSingleFile=true
+          --output publish
+
+      - name: Package release artifact
+        run: |
+          cd publish
+          zip -r ../doorapp-familab-${{ steps.extract.outputs.VERSION }}-${{ env.RUNTIME }}.zip .
+          cd ..
+
+      - name: Upload release artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: doorapp-familab-${{ steps.extract.outputs.VERSION }}-${{ env.RUNTIME }}
+          path: doorapp-familab-${{ steps.extract.outputs.VERSION }}-${{ env.RUNTIME }}.zip
+          retention-days: 30
+
+      - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: doorapp-familab-${{ steps.extract.outputs.VERSION }}-${{ env.RUNTIME }}.zip
+          generate_release_notes: true

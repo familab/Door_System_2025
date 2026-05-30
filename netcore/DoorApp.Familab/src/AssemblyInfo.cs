@@ -2,8 +2,7 @@
 // AssemblyInfo.cs
 //
 // This file holds the embedded version of the application. It is updated
-// automatically by the CI pipeline (see .github/workflows/deploynetcore.yml and
-// scripts/updateVersionNetcore.ps1 / .sh) using GitVersion output.
+// automatically by the CI pipeline (see .github/workflows/deploynetcore.yml).
 //
 // The values here are read at runtime by AssemblyVersionProvider.
 // -----------------------------------------------------------------------------

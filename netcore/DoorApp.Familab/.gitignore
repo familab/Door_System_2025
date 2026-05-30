@@ -1,0 +1,13 @@
+# Build output
+bin/
+obj/
+publish/
+
+# Local runtime data and secrets
+data/
+appsettings.Production.json
+appsettings.Testing.json
+*.user
+
+# Version stamping artifact
+version-*.txt

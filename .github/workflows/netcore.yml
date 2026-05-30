@@ -1,0 +1,75 @@
+name: .NET CI
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
+
+on:
+  push:
+    paths:
+      - 'netcore/**'
+      - '.github/workflows/netcore.yml'
+  pull_request:
+    paths:
+      - 'netcore/**'
+      - '.github/workflows/netcore.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  checks: write
+  pull-requests: write
+
+env:
+  DOTNET_NOLOGO: 'true'
+  DOTNET_CLI_TELEMETRY_OPTOUT: 'true'
+  SOLUTION: netcore/DoorApp.Familab/DoorApp.Familab.sln
+  PROJECT: netcore/DoorApp.Familab/src/DoorApp.Familab.csproj
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restore
+        run: dotnet restore ${{ env.SOLUTION }}
+
+      - name: Build
+        run: dotnet build ${{ env.SOLUTION }} --configuration Release --no-restore
+
+      - name: Run unit tests
+        run: >
+          dotnet test ${{ env.SOLUTION }}
+          --configuration Release
+          --no-build
+          --logger "trx;LogFileName=test-results.trx"
+          --results-directory test-results
+
+      - name: Publish test results
+        if: always()
+        uses: EnricoMi/publish-unit-test-result-action@v2
+        with:
+          files: test-results/**/*.trx
+
+      - name: Publish application
+        run: >
+          dotnet publish ${{ env.PROJECT }}
+          --configuration Release
+          --no-restore
+          --output publish
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: doorapp-familab-ci
+          path: publish/
+          retention-days: 7

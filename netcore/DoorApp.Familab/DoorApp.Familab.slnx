@@ -1,8 +1,0 @@
-<Solution>
-  <Folder Name="/src/">
-    <Project Path="src/DoorApp.Familab.csproj" />
-  </Folder>
-  <Folder Name="/tests/">
-    <Project Path="tests/DoorApp.Familab.Tests.csproj" />
-  </Folder>
-</Solution>

@@ -1,0 +1,23 @@
+[Unit]
+Description=Familab NFC Door Access (.NET)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=notify
+# Path where you copied the published output
+WorkingDirectory=/opt/doorapp
+ExecStart=/opt/doorapp/DoorApp.Familab
+Restart=always
+RestartSec=5
+# Run as a non-root user that is a member of the gpio and i2c groups
+User=doorapp
+Group=doorapp
+SupplementaryGroups=gpio i2c
+Environment=DOTNET_ENVIRONMENT=Production
+Environment=ASPNETCORE_URLS=http://0.0.0.0:3667
+# systemd watchdog: app uses Type=notify via the .NET host lifetime
+WatchdogSec=30
+
+[Install]
+WantedBy=multi-user.target
