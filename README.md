@@ -30,6 +30,7 @@ Credentials:
 - [Data Schema](docs/data-schema.md)
 - [Metrics](docs/metrics.md)
 - [Single Sign-On Setup](docs/single_sign_on.md)
+- [Deploy Guide](docs/deploy.md)
 
 
 ## Table of Contents
@@ -123,6 +124,12 @@ Then install the project dependencies:
 pip install -r requirements.txt
 ```
 
+For local development (includes test tools):
+
+```bash
+pip install -r requirements.dev.txt
+```
+
 **If SSH connection times out during installation** (common on slower Pi models), run installation in background:
 
 ```bash
@@ -160,6 +167,31 @@ Edit `config.py` or set environment variables:
 export DOOR_HEALTH_PORT=3667
 export DOOR_HEALTH_USERNAME=admin
 export DOOR_HEALTH_PASSWORD=changeme
+```
+
+### Local Windows Setup for Python 3.13
+
+Use [Chocolatey](https://chocolatey.org/) to install Python 3.13:
+
+```powershell
+choco install python --version=3.13 -y
+```
+
+Verify the installation:
+
+```powershell
+python --version
+# Expected: Python 3.13.x
+```
+
+Recreate the virtual environment:
+
+```powershell
+python -m venv .venv
+py -V:3.13 -m venv .venv
+.venv\Scripts\activate
+pip install -r requirements.txt
+pip install -r requirements.dev.txt
 ```
 
 ### Development on Windows (no Raspberry Pi)
@@ -203,10 +235,10 @@ eval "$(pyenv virtualenv-init -)"
 ```sh
 sudo mount -o remount,size=2G /tmp
 ```
-* install python 12
+* install python 13
 ```sh
-pyenv install 3.12
-pyenv global 3.12
+pyenv install 3.13
+pyenv global 3.13
 ```
 
 
@@ -374,7 +406,7 @@ GitHub Actions automatically runs tests on push/PR to main/develop branches.
 
 See `.github/workflows/tests.yml` for CI configuration.
 
-Tests run on Python 3.9, 3.10, and 3.11.
+Tests run on Python 3.13.
 
 ## Deployment (production)
 
