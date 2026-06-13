@@ -217,6 +217,7 @@ jobs:
 
       - name: Restart door service
         run: |
+          sudo systemctl enable door-app.service
           sudo systemctl restart door-app.service
           sudo systemctl status door-app.service --no-pager --lines=50
 
