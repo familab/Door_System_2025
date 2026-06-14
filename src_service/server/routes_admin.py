@@ -27,7 +27,6 @@ from .state import (
     get_uptime_seconds,
     get_disk_space,
     get_pn532_status,
-    get_pn532_health,
     get_badge_refresh_callback,
     get_door_toggle_callback,
     check_rate_limit_badge_refresh,
@@ -42,7 +41,7 @@ import re
 from io import BytesIO
 from zipfile import ZipFile
 from .helpers import get_host_header, get_client_addr, get_public_ip
-from .routes_public import _build_pn532_health_rows
+from .routes_public import _build_pn532_panel
 from .auth import login_required, get_current_user
 
 
@@ -66,9 +65,9 @@ def send_admin_page(handler):
     pn532_status = get_pn532_status()
     pn532_success = format_timestamp(pn532_status["last_success"])
     pn532_error = pn532_status["last_error"] or "None"
-    # PN532 hardware health rows, derived from pushed state (no I2C access); shares
-    # the same row builder as the public health page so both stay in sync.
-    pn532_health_rows = _build_pn532_health_rows(get_pn532_health())
+    # PN532 column, derived from pushed state (no I2C access); shares the same panel
+    # builder as the public health page so both stay in sync.
+    pn532_panel = _build_pn532_panel(pn532_success, pn532_error)
     uptime = get_uptime()
     uptime_seconds = get_uptime_seconds()
     disk = get_disk_space()
@@ -118,10 +117,15 @@ def send_admin_page(handler):
     <style>
         body {{ font-family: monospace; margin: 20px; background: #1e1e1e; color: #d4d4d4; }}
         h1 {{ color: #4ec9b0; }}
-        table {{ border-collapse: collapse; width: 100%; max-width: 900px; }}
+        table {{ border-collapse: collapse; width: 100%; max-width: 520px; }}
         th, td {{ border: 1px solid #555; padding: 10px; text-align: left; }}
         th {{ background: #2d2d30; color: #4ec9b0; }}
         tr:nth-child(even) {{ background: #252526; }}
+        /* Two-column layout: system metrics on the left, PN532 on the right. */
+        .cols {{ display: flex; gap: 20px; align-items: flex-start; flex-wrap: wrap; }}
+        .cols > table {{ flex: 1 1 360px; }}
+        /* Log tables span the full width below the columns. */
+        table.logs {{ max-width: 900px; margin-top: 16px; }}
         .status-ok {{ color: #4ec9b0; font-weight: bold; }}
         .status-warning {{ color: #dcdcaa; font-weight: bold; }}
         .status-error {{ color: #f48771; font-weight: bold; }}
@@ -151,6 +155,7 @@ def send_admin_page(handler):
         </button>
     </p>
     <div id="toast" class="toast"></div>
+    <div class="cols">
     <table>
         <tr><th>Metric</th><th>Value</th></tr>
         <tr>
@@ -166,15 +171,14 @@ def send_admin_page(handler):
             <td>Google Sheets Last Error</td>
             <td class="{'status-ok' if google_error == 'None' else 'status-error'}">{google_error}</td>
         </tr>
-        <tr><td>PN532 Last Success</td><td>{pn532_success}</td></tr>
-        <tr>
-            <td>PN532 Last Error</td>
-            <td class="{'status-ok' if pn532_error == 'None' else 'status-error'}">{pn532_error}</td>
-        </tr>
-        {pn532_health_rows}
         <tr><td>Log File Size</td><td>{log_size_mb:.2f} MB</td></tr>
         <tr><td>Current Log File</td><td style="font-size:0.9em; word-break:break-all;">{current_log_file}</td></tr>
         <tr><td>Disk Free Space</td><td>{disk['free_mb']:.2f} MB / {disk['total_mb']:.2f} MB ({disk['percent_used']:.1f}% used)</td></tr>
+    </table>
+    {pn532_panel}
+    </div>
+    <table class="logs">
+        <tr><th>Logs</th><th>Latest</th></tr>
         <tr>
             <td>Last 50 System Log Lines</td>
             <td><pre>{last_system_log or '(empty)'}</pre></td>
