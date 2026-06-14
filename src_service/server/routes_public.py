@@ -18,9 +18,51 @@ from .state import (
     get_uptime_seconds,
     get_disk_space,
     get_pn532_status,
+    get_pn532_health,
 )
 from datetime import datetime
 import socket
+
+
+def _build_pn532_health_rows(health: dict) -> str:
+    """Render the derived PN532 health dict as health-page table rows.
+
+    `health` comes from get_pn532_health() (pushed state only, no I2C access). Each
+    check renders an OK/value row in green or an error row in red; the IRQ row is
+    emitted only when an IRQ pin is wired.
+    """
+    # Combined status drives the colour: healthy=ok, degraded=warning, else error.
+    status_value = health["pn532_status"]
+    status_class = {
+        "healthy": "status-ok",
+        "degraded": "status-warning",
+    }.get(status_value, "status-error")
+    rows = f'<tr><td>PN532 Status</td><td class="{status_class}">{status_value}</td></tr>'
+
+    # Firmware row: version string on success, exception message on failure.
+    if health["pn532_firmware_ok"]:
+        rows += f'<tr><td>PN532 Firmware</td><td class="status-ok">{health["pn532_firmware"]}</td></tr>'
+    else:
+        rows += f'<tr><td>PN532 Firmware</td><td class="status-error">{health["pn532_firmware_error"]}</td></tr>'
+
+    # SAM configuration row: OK or the captured error message.
+    if health["pn532_sam_ok"]:
+        rows += '<tr><td>PN532 SAM Config</td><td class="status-ok">OK</td></tr>'
+    else:
+        rows += f'<tr><td>PN532 SAM Config</td><td class="status-error">{health["pn532_sam_error"]}</td></tr>'
+
+    # Read-loop responsiveness row: OK if a recent clean poll, else the read error.
+    if health["pn532_read_ok"]:
+        rows += '<tr><td>PN532 Read Loop</td><td class="status-ok">OK</td></tr>'
+    else:
+        rows += f'<tr><td>PN532 Read Loop</td><td class="status-error">{health["pn532_read_error"]}</td></tr>'
+
+    # IRQ row only appears when an IRQ pin is wired (field omitted otherwise).
+    if "pn532_irq_state" in health:
+        irq_display = "Asserted (low)" if health["pn532_irq_state"] else "Idle"
+        rows += f'<tr><td>PN532 IRQ</td><td>{irq_display}</td></tr>'
+
+    return rows
 
 
 def send_health_page(handler):
@@ -34,6 +76,11 @@ def send_health_page(handler):
     pn532_status = get_pn532_status()
     pn532_success = format_timestamp(pn532_status["last_success"])
     pn532_error = pn532_status["last_error"] or "None"
+
+    # PN532 hardware health: all values are derived from state pushed by the init
+    # probe and the RFID read loop (no I2C access here), rendered as extra table rows.
+    pn532_health_rows = _build_pn532_health_rows(get_pn532_health())
+
     uptime = get_uptime()
     uptime_seconds = get_uptime_seconds()
     disk = get_disk_space()
@@ -98,6 +145,7 @@ def send_health_page(handler):
             <td>PN532 Last Error</td>
             <td class="{'status-ok' if pn532_error == 'None' else 'status-error'}">{pn532_error}</td>
         </tr>
+        {pn532_health_rows}
         <tr><td>Disk Free Space</td><td>{disk['free_mb']:.2f} MB / {disk['total_mb']:.2f} MB ({disk['percent_used']:.1f}% used)</td></tr>
     </table>
     <script>
