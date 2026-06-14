@@ -23,7 +23,7 @@ pyftdi==0.57.1
 
 # Google API dependencies
 google-auth==2.49.2
-google-auth-oauthlib==1.2.1
+google-auth-oauthlib==1.4.0
 httplib2==0.31.2
 
 # Standard library enhancements (Python compatibility)
