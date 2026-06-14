@@ -16,6 +16,16 @@ APPLICATION_JSON = "application/json"
 _app_start_time = datetime.now()
 _last_pn532_success = None
 _last_pn532_error = None
+# Extended PN532 health, pushed from the init probe and the RFID read loop so the
+# health-server thread can report status without ever touching the I2C bus.
+_pn532_firmware = None        # dict {"major", "minor", "ic"} captured once at init
+_pn532_firmware_error = None  # str: last firmware-read failure message
+_pn532_sam_ok = None          # bool: outcome of the init SAM_configuration() call
+_pn532_sam_error = None       # str: SAM configuration failure message
+_pn532_last_poll = None       # datetime: last clean read-loop poll (liveness heartbeat)
+_pn532_hardware = None        # bool: True if real hardware, False if running on the stub
+_pn532_irq_wired = False      # bool: True only if an IRQ pin is wired and reported
+_pn532_irq_state = None       # bool: last IRQ level (True = asserted low / pending)
 _pn532_lock = threading.Lock()
 
 # Badge refresh callback (set by start.py)
@@ -63,6 +73,137 @@ def get_pn532_status():
             "last_success": _last_pn532_success,
             "last_error": _last_pn532_error,
         }
+
+
+def update_pn532_firmware(major, minor, ic):
+    """Cache the PN532 firmware version read once at init (no live re-probe later)."""
+    global _pn532_firmware, _pn532_firmware_error
+    with _pn532_lock:
+        _pn532_firmware = {"major": major, "minor": minor, "ic": ic}
+        _pn532_firmware_error = None
+
+
+def update_pn532_firmware_error(error: str):
+    """Record a failed firmware-version read so the health page can report it."""
+    global _pn532_firmware, _pn532_firmware_error
+    with _pn532_lock:
+        _pn532_firmware = None
+        _pn532_firmware_error = error
+
+
+def update_pn532_sam_ok():
+    """Record that the init SAM_configuration() call succeeded."""
+    global _pn532_sam_ok, _pn532_sam_error
+    with _pn532_lock:
+        _pn532_sam_ok = True
+        _pn532_sam_error = None
+
+
+def update_pn532_sam_error(error: str):
+    """Record that SAM configuration failed (e.g. I2C error, disconnected reader)."""
+    global _pn532_sam_ok, _pn532_sam_error
+    with _pn532_lock:
+        _pn532_sam_ok = False
+        _pn532_sam_error = error
+
+
+def update_pn532_poll():
+    """Heartbeat: record that the read loop just completed a clean poll.
+
+    Called on every successful read_passive_target() (card or None), this is the
+    liveness signal the health page uses to judge read-loop responsiveness without
+    issuing its own I2C read.
+    """
+    global _pn532_last_poll
+    with _pn532_lock:
+        _pn532_last_poll = datetime.now()
+
+
+def set_pn532_hardware(present: bool):
+    """Record whether the PN532 came up as real hardware (True) or the stub (False)."""
+    global _pn532_hardware
+    with _pn532_lock:
+        _pn532_hardware = present
+
+
+def update_pn532_irq_state(state: bool):
+    """Record the IRQ pin level. Marks IRQ as wired so the health page surfaces it.
+
+    Only call this if an IRQ pin is actually wired; otherwise the field stays omitted.
+    """
+    global _pn532_irq_wired, _pn532_irq_state
+    with _pn532_lock:
+        _pn532_irq_wired = True
+        _pn532_irq_state = bool(state)
+
+
+def get_pn532_health() -> dict:
+    """Derive PN532 health from pushed state only (never touches the I2C bus).
+
+    Every value originates from the one-time init probe or the RFID read loop, so
+    this is safe to call from the health-server thread and returns in microseconds,
+    keeping the health page well under its 200ms budget. The returned dict mirrors
+    the documented pn532_* fields; optional error/IRQ keys are present only when
+    relevant.
+    """
+    freshness = int(config.get("HEALTH_PN532_READ_FRESHNESS_SECONDS", 10) or 10)
+    with _pn532_lock:
+        firmware = _pn532_firmware
+        firmware_error = _pn532_firmware_error
+        sam_ok = _pn532_sam_ok
+        sam_error = _pn532_sam_error
+        last_poll = _pn532_last_poll
+        last_error = _last_pn532_error
+        hardware = _pn532_hardware
+        irq_wired = _pn532_irq_wired
+        irq_state = _pn532_irq_state
+
+    health = {}
+
+    # Firmware check: cached version string if the init read succeeded, else the error.
+    if firmware is not None:
+        health["pn532_firmware_ok"] = True
+        health["pn532_firmware"] = f"{firmware['major']}.{firmware['minor']} (IC: {firmware['ic']})"
+    else:
+        health["pn532_firmware_ok"] = False
+        health["pn532_firmware_error"] = firmware_error or "Firmware version unavailable"
+
+    # SAM configuration check: result captured during init.
+    if sam_ok:
+        health["pn532_sam_ok"] = True
+    else:
+        health["pn532_sam_ok"] = False
+        health["pn532_sam_error"] = sam_error or "SAM configuration not confirmed"
+
+    # Read-loop responsiveness: a clean poll within the freshness window means the
+    # reader is alive. Stale or never-polled reports the last known read error.
+    read_ok = False
+    if last_poll is not None:
+        read_ok = (datetime.now() - last_poll).total_seconds() <= freshness
+    if read_ok:
+        health["pn532_read_ok"] = True
+    else:
+        health["pn532_read_ok"] = False
+        health["pn532_read_error"] = last_error or "No recent successful read"
+
+    # IRQ state is reported only when an IRQ pin is wired; omitted entirely otherwise.
+    if irq_wired:
+        health["pn532_irq_state"] = bool(irq_state)
+
+    # Combined status: healthy = all checks pass, degraded = some fail,
+    # unavailable = all fail or the reader never initialized as real hardware.
+    checks = [health["pn532_firmware_ok"], health["pn532_sam_ok"], health["pn532_read_ok"]]
+    passed = sum(1 for c in checks if c)
+    if hardware is False:
+        health["pn532_status"] = "unavailable"
+    elif passed == len(checks):
+        health["pn532_status"] = "healthy"
+    elif passed == 0:
+        health["pn532_status"] = "unavailable"
+    else:
+        health["pn532_status"] = "degraded"
+
+    return health
 
 
 def set_badge_refresh_callback(fn):

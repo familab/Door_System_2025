@@ -14,6 +14,77 @@ import src_service.server.state as server_state
 from src_service.server.server import RequestHandler, _health_server, start_health_server, stop_health_server
 
 
+class TestPN532Health(unittest.TestCase):
+    """Test cases for the derived PN532 health (pushed-state, no I2C access)."""
+
+    def setUp(self):
+        """Reset all PN532 health globals before each test."""
+        server_state._last_pn532_success = None
+        server_state._last_pn532_error = None
+        server_state._pn532_firmware = None
+        server_state._pn532_firmware_error = None
+        server_state._pn532_sam_ok = None
+        server_state._pn532_sam_error = None
+        server_state._pn532_last_poll = None
+        server_state._pn532_hardware = None
+        server_state._pn532_irq_wired = False
+        server_state._pn532_irq_state = None
+
+    def test_all_checks_pass_is_healthy(self):
+        """Firmware + SAM + a fresh poll on real hardware -> healthy."""
+        server.set_pn532_hardware(True)
+        server.update_pn532_firmware(1, 6, 0x32)
+        server.update_pn532_sam_ok()
+        server.update_pn532_poll()
+        health = server.get_pn532_health()
+        self.assertEqual(health["pn532_status"], "healthy")
+        self.assertTrue(health["pn532_firmware_ok"])
+        self.assertEqual(health["pn532_firmware"], "1.6 (IC: 50)")
+        self.assertTrue(health["pn532_sam_ok"])
+        self.assertTrue(health["pn532_read_ok"])
+
+    def test_one_failure_is_degraded(self):
+        """SAM ok + fresh poll but a failed firmware read -> degraded."""
+        server.set_pn532_hardware(True)
+        server.update_pn532_firmware_error("I2C read error")
+        server.update_pn532_sam_ok()
+        server.update_pn532_poll()
+        health = server.get_pn532_health()
+        self.assertEqual(health["pn532_status"], "degraded")
+        self.assertFalse(health["pn532_firmware_ok"])
+        self.assertEqual(health["pn532_firmware_error"], "I2C read error")
+
+    def test_stub_is_unavailable(self):
+        """Running on the stub (no real hardware) -> unavailable."""
+        server.set_pn532_hardware(False)
+        health = server.get_pn532_health()
+        self.assertEqual(health["pn532_status"], "unavailable")
+
+    def test_all_checks_fail_is_unavailable(self):
+        """No state pushed at all -> every check fails -> unavailable."""
+        health = server.get_pn532_health()
+        self.assertEqual(health["pn532_status"], "unavailable")
+        self.assertFalse(health["pn532_firmware_ok"])
+        self.assertFalse(health["pn532_sam_ok"])
+        self.assertFalse(health["pn532_read_ok"])
+
+    def test_stale_poll_is_not_read_ok(self):
+        """A poll older than the freshness window reports read not ok."""
+        from datetime import timedelta
+        server.set_pn532_hardware(True)
+        server_state._pn532_last_poll = datetime.now() - timedelta(seconds=3600)
+        server.update_pn532_error("PN532 timeout")
+        health = server.get_pn532_health()
+        self.assertFalse(health["pn532_read_ok"])
+        self.assertEqual(health["pn532_read_error"], "PN532 timeout")
+
+    def test_irq_field_omitted_when_not_wired(self):
+        """IRQ field is absent unless an IRQ pin is wired."""
+        self.assertNotIn("pn532_irq_state", server.get_pn532_health())
+        server.update_pn532_irq_state(True)
+        self.assertEqual(server.get_pn532_health()["pn532_irq_state"], True)
+
+
 class TestServerStateFunctions(unittest.TestCase):
     """Test cases for server state utility functions."""
 

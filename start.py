@@ -57,6 +57,12 @@ from src_service.server import (
     stop_health_server,
     update_pn532_success,
     update_pn532_error,
+    update_pn532_firmware,
+    update_pn532_firmware_error,
+    update_pn532_sam_ok,
+    update_pn532_sam_error,
+    update_pn532_poll,
+    set_pn532_hardware,
     set_badge_refresh_callback,
     set_door_toggle_callback,
     update_badge_refresh_attempt_time,
@@ -183,16 +189,40 @@ def _init_pn532():
     """
     if PN532_I2C is None:
         from src_service.pn532_stub import PN532Stub
+        # No hardware libs: the health page reports PN532 unavailable (running on stub).
+        set_pn532_hardware(False)
         return PN532Stub()
     try:
         i2c = busio.I2C(board.SCL, board.SDA)
         reader = PN532_I2C(i2c, debug=False)
+        # SAM configuration puts the chip in a usable read state. Capture the outcome
+        # once here so the health page never has to re-issue this command on the bus.
         reader.SAM_configuration()
+        update_pn532_sam_ok()
         reader.power_down = False  # shadow the method; calling it would raise TypeError
+        # Read the firmware version a single time at init and cache it for the health
+        # page; this keeps the health-server thread off the shared I2C bus entirely.
+        # Current Adafruit lib exposes a `firmware_version` property; fall back to the
+        # older `get_firmware_version()` method name for compatibility. Both return
+        # (ic, ver, rev, support).
+        try:
+            try:
+                ic, major, minor, _support = reader.firmware_version
+            except AttributeError:
+                ic, major, minor, _support = reader.get_firmware_version()
+            update_pn532_firmware(major, minor, ic)
+        except Exception as fw_err:
+            update_pn532_firmware_error(str(fw_err))
+            logger.warning(f"PN532 firmware version read failed: {fw_err}")
+        set_pn532_hardware(True)
         logger.info("PN532 initialized in Normal Mode")
         return reader
     except Exception as e:
         logger.warning(f"PN532 hardware init failed: {e}. Falling back to stub.")
+        # Record why the reader is unavailable so the health page reflects the failure
+        # (covers I2C bus errors, a disconnected reader, or an invalid chip state).
+        update_pn532_sam_error(str(e))
+        set_pn532_hardware(False)
         from src_service.pn532_stub import PN532Stub
         return PN532Stub()
 
@@ -358,6 +388,10 @@ def check_rfid(stop_event: threading.Event):
             # Any response (card or None) counts as proof the reader is alive
             _error_streak = 0
             _poll_count += 1
+            # Heartbeat for the health page: a clean poll means the read loop is
+            # responsive. The health endpoint reads this timestamp instead of
+            # issuing its own (bus-contending) read_passive_target call.
+            update_pn532_poll()
             if _poll_count % _HEARTBEAT_EVERY == 0:
                 logger.debug(f"PN532 heartbeat: {_poll_count} polls, reader alive")
 
