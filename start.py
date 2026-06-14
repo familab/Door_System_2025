@@ -202,8 +202,14 @@ def _init_pn532():
         reader.power_down = False  # shadow the method; calling it would raise TypeError
         # Read the firmware version a single time at init and cache it for the health
         # page; this keeps the health-server thread off the shared I2C bus entirely.
+        # Current Adafruit lib exposes a `firmware_version` property; fall back to the
+        # older `get_firmware_version()` method name for compatibility. Both return
+        # (ic, ver, rev, support).
         try:
-            ic, major, minor, _support = reader.get_firmware_version()
+            try:
+                ic, major, minor, _support = reader.firmware_version
+            except AttributeError:
+                ic, major, minor, _support = reader.get_firmware_version()
             update_pn532_firmware(major, minor, ic)
         except Exception as fw_err:
             update_pn532_firmware_error(str(fw_err))

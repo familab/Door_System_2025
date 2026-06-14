@@ -27,6 +27,7 @@ from .state import (
     get_uptime_seconds,
     get_disk_space,
     get_pn532_status,
+    get_pn532_health,
     get_badge_refresh_callback,
     get_door_toggle_callback,
     check_rate_limit_badge_refresh,
@@ -41,6 +42,7 @@ import re
 from io import BytesIO
 from zipfile import ZipFile
 from .helpers import get_host_header, get_client_addr, get_public_ip
+from .routes_public import _build_pn532_health_rows
 from .auth import login_required, get_current_user
 
 
@@ -64,6 +66,9 @@ def send_admin_page(handler):
     pn532_status = get_pn532_status()
     pn532_success = format_timestamp(pn532_status["last_success"])
     pn532_error = pn532_status["last_error"] or "None"
+    # PN532 hardware health rows, derived from pushed state (no I2C access); shares
+    # the same row builder as the public health page so both stay in sync.
+    pn532_health_rows = _build_pn532_health_rows(get_pn532_health())
     uptime = get_uptime()
     uptime_seconds = get_uptime_seconds()
     disk = get_disk_space()
@@ -166,6 +171,7 @@ def send_admin_page(handler):
             <td>PN532 Last Error</td>
             <td class="{'status-ok' if pn532_error == 'None' else 'status-error'}">{pn532_error}</td>
         </tr>
+        {pn532_health_rows}
         <tr><td>Log File Size</td><td>{log_size_mb:.2f} MB</td></tr>
         <tr><td>Current Log File</td><td style="font-size:0.9em; word-break:break-all;">{current_log_file}</td></tr>
         <tr><td>Disk Free Space</td><td>{disk['free_mb']:.2f} MB / {disk['total_mb']:.2f} MB ({disk['percent_used']:.1f}% used)</td></tr>
