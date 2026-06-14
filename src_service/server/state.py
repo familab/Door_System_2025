@@ -180,11 +180,21 @@ def get_pn532_health() -> dict:
     read_ok = False
     if last_poll is not None:
         read_ok = (datetime.now() - last_poll).total_seconds() <= freshness
+    # If the reader isn't real hardware (failed init / running on the stub), the read
+    # loop may still be polling the stub successfully — that heartbeat must not count
+    # as a healthy hardware read.
+    if hardware is False:
+        read_ok = False
     if read_ok:
         health["pn532_read_ok"] = True
     else:
         health["pn532_read_ok"] = False
-        health["pn532_read_error"] = last_error or "No recent successful read"
+        if last_error:
+            health["pn532_read_error"] = last_error
+        elif hardware is False:
+            health["pn532_read_error"] = "PN532 unavailable"
+        else:
+            health["pn532_read_error"] = "No recent successful read"
 
     # IRQ state is reported only when an IRQ pin is wired; omitted entirely otherwise.
     if irq_wired:

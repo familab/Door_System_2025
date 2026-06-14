@@ -78,6 +78,18 @@ class TestPN532Health(unittest.TestCase):
         self.assertFalse(health["pn532_read_ok"])
         self.assertEqual(health["pn532_read_error"], "PN532 timeout")
 
+    def test_unavailable_hardware_forces_read_not_ok(self):
+        """On disconnect/stub fallback a fresh poll must NOT count as a healthy read."""
+        server.set_pn532_hardware(False)
+        server.update_pn532_firmware(1, 6, 0x32)  # cached from a prior good init
+        server.update_pn532_poll()                # stub is polling fine right now
+        health = server.get_pn532_health()
+        self.assertEqual(health["pn532_status"], "unavailable")
+        self.assertFalse(health["pn532_read_ok"])
+        # Firmware value is still reported (informational), not dropped.
+        self.assertTrue(health["pn532_firmware_ok"])
+        self.assertEqual(health["pn532_firmware"], "1.6 (IC: 50)")
+
     def test_irq_field_omitted_when_not_wired(self):
         """IRQ field is absent unless an IRQ pin is wired."""
         self.assertNotIn("pn532_irq_state", server.get_pn532_health())

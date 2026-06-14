@@ -40,9 +40,11 @@ def _build_pn532_health_rows(health: dict) -> str:
     }.get(status_value, "status-error")
     rows = f'<tr><td>Status</td><td class="{status_class}">{status_value}</td></tr>'
 
-    # Firmware row: version string on success, exception message on failure.
+    # Firmware is a static informational value (it never changes for a given board
+    # and is cached from init), so the version renders in plain white rather than
+    # green; only a failed read is flagged red.
     if health["pn532_firmware_ok"]:
-        rows += f'<tr><td>Firmware</td><td class="status-ok">{health["pn532_firmware"]}</td></tr>'
+        rows += f'<tr><td>Firmware</td><td>{health["pn532_firmware"]}</td></tr>'
     else:
         rows += f'<tr><td>Firmware</td><td class="status-error">{health["pn532_firmware_error"]}</td></tr>'
 
