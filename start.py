@@ -21,9 +21,13 @@ except Exception:
         # Some emulator packages may expose an alternative module name
         import RPi.GPIO_emulator as GPIO  # type: ignore
     except Exception:
-        # Local stub as final fallback
-        import importlib
-        GPIO = importlib.import_module('src_service.gpio_stub')
+        # Load stub directly by file path to avoid triggering src_service/__init__.py
+        # (which would load config before the app is ready)
+        import importlib.util as _ilu
+        _stub_path = os.path.join(os.path.dirname(__file__), "src_service", "gpio_stub.py")
+        _spec = _ilu.spec_from_file_location("gpio_stub", _stub_path)
+        GPIO = _ilu.module_from_spec(_spec)
+        _spec.loader.exec_module(GPIO)
         print("Warning: RPi.GPIO not found; using GPIO stub for development.")
 import time
 import threading
@@ -170,16 +174,31 @@ except Exception as e:
     logger.warning(f"Failed to initialize GPIO: {e}. Continuing with GPIO stub if available.")
     # Continue running in development mode; GPIO may be a stub module
 
+def _init_pn532():
+    """Initialize PN532 in Normal Mode. Returns hardware instance or stub on failure.
+
+    SAM_configuration() hardcodes mode=0x01 (Normal) in the Adafruit library, keeping
+    the RF field active.  Shadowing power_down with False on the instance prevents any
+    accidental call from putting the chip into low-power mode.
+    """
+    if PN532_I2C is None:
+        from src_service.pn532_stub import PN532Stub
+        return PN532Stub()
+    try:
+        i2c = busio.I2C(board.SCL, board.SDA)
+        reader = PN532_I2C(i2c, debug=False)
+        reader.SAM_configuration()
+        reader.power_down = False  # shadow the method; calling it would raise TypeError
+        logger.info("PN532 initialized in Normal Mode")
+        return reader
+    except Exception as e:
+        logger.warning(f"PN532 hardware init failed: {e}. Falling back to stub.")
+        from src_service.pn532_stub import PN532Stub
+        return PN532Stub()
+
+
 # I2C setup for PN532
-try:
-    i2c = busio.I2C(board.SCL, board.SDA)
-    pn532 = PN532_I2C(i2c, debug=False)
-    pn532.SAM_configuration()
-    logger.info("PN532 RFID reader initialized")
-except Exception as e:
-    logger.warning(f"Failed to initialize PN532: {e}. Using PN532 stub for development.")
-    from src_service.pn532_stub import PN532Stub
-    pn532 = PN532Stub()
+pn532 = _init_pn532()
 
 # Initialize door controller
 door_controller = DoorController(GPIO, RELAY_PIN, gpio_lock)
@@ -317,53 +336,82 @@ def _check_uid_from_sources(uid_hex: str) -> Tuple[bool, str]:
 
 
 def check_rfid(stop_event: threading.Event):
-    """Monitor PN532 RFID reader and authenticate badges."""
+    """Monitor PN532 RFID reader and authenticate badges.
+
+    Runs a tight 0.1 s read loop to prevent the PN532 from entering idle states.
+    Tracks consecutive errors and reinitializes the hardware after _REINIT_THRESHOLD
+    failures so an I2C stall recovers without a Pi reboot.
+    """
+    global pn532
+
     logger.info("RFID monitoring thread started")
+
+    _poll_count = 0          # total successful polls (heartbeat counter)
+    _error_streak = 0        # consecutive errors since last clean read
+    _REINIT_THRESHOLD = 5    # reinit after this many consecutive errors (~5 s)
+    _HEARTBEAT_EVERY = 300   # log heartbeat every N clean polls (~60 s at 0.2 s/poll)
 
     while not stop_event.is_set():
         try:
-            # Read the UID from the RFID card
             uid = pn532.read_passive_target(timeout=0.1)
 
+            # Any response (card or None) counts as proof the reader is alive
+            _error_streak = 0
+            _poll_count += 1
+            if _poll_count % _HEARTBEAT_EVERY == 0:
+                logger.debug(f"PN532 heartbeat: {_poll_count} polls, reader alive")
+
             if uid:
-                # Convert the UID to a hex string
                 uid_hex = ''.join(format(x, '02X') for x in uid).lower()
                 logger.info(f"Card scanned with UID: {uid_hex}")
                 update_pn532_success()
 
-                # Check sources for access
                 access_granted, source = _check_uid_from_sources(uid_hex)
 
-                # Process access decision
                 if access_granted:
                     logger.info(f"Access GRANTED for {uid_hex} from {source}")
                     record_action("Badge Scan", uid_hex, "Granted")
-
-                    # Unlock door temporarily if not already unlocked
                     if not get_door_status():
-                        # Pass badge UID through so actions are attributed to this badge
                         door_controller.unlock_temporarily(config["DOOR_UNLOCK_BADGE_DURATION"], badge_id=uid_hex)
-
-                    # Log to Google Sheets (best effort)
-                    data_client.log_access(uid_hex, "Granted")
+                    try:
+                        data_client.log_access(uid_hex, "Granted")
+                    except Exception:
+                        pass
                 else:
                     logger.warning(f"Access DENIED for {uid_hex}")
                     record_action("Badge Scan", uid_hex, "Denied")
+                    try:
+                        data_client.log_access(uid_hex, "Denied")
+                    except Exception:
+                        pass
 
-                    # Log to Google Sheets (best effort)
-                    data_client.log_access(uid_hex, "Denied")
-
-                # Prevent multiple immediate reads but allow early exit on stop
+                # Brief hold-off after a scan; keeps debounce and prevents double-reads
                 stop_event.wait(1)
             else:
-                # Short delay to avoid busy loop, but wake on stop
                 stop_event.wait(0.1)
 
-        except Exception as e:
-            logger.error(f"PN532 error in main loop: {e}")
+        except OSError as e:
+            # I2C bus error — may be a transient stall or a hardware fault
+            _error_streak += 1
+            logger.error(f"PN532 I2C error (streak {_error_streak}): {e}")
             log_pn532_error(e)
             update_pn532_error(str(e))
-            stop_event.wait(1)  # Back off on error and allow shutdown
+            if _error_streak >= _REINIT_THRESHOLD:
+                logger.warning(f"PN532 reinitializing after {_error_streak} consecutive I2C errors")
+                pn532 = _init_pn532()
+                _error_streak = 0
+            stop_event.wait(1)
+
+        except Exception as e:
+            _error_streak += 1
+            logger.error(f"PN532 error (streak {_error_streak}): {e}")
+            log_pn532_error(e)
+            update_pn532_error(str(e))
+            if _error_streak >= _REINIT_THRESHOLD:
+                logger.warning(f"PN532 reinitializing after {_error_streak} consecutive errors")
+                pn532 = _init_pn532()
+                _error_streak = 0
+            stop_event.wait(1)
 
 
 def main():

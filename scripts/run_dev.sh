@@ -12,6 +12,7 @@ if [ "$1" = "install" ]; then
   echo "Installing dependencies..."
   python -m pip install --upgrade pip
   pip install -r requirements.txt
+  pip install -r requirements.dev.txt
 fi
 
 echo "Starting application (dev mode)"

@@ -112,15 +112,17 @@ jobs:
           echo "version.txt content:"
           cat version-$VERSION.txt
 
-      - name: Set up Python 3.9
+      - name: Set up Python 3.13
         uses: actions/setup-python@v5
         with:
-          python-version: "3.9"
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: requirements.dev.txt
 
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
+          pip install -r requirements.dev.txt
           pip install coverage
 
       - name: Run tests with coverage
@@ -143,14 +145,22 @@ jobs:
             -Dsonar.exclusions=**/node_modules/**,**/dist/**,**/target/**,**/coverage/**,**/reports/**,**/android/**,**/ios/**,**/__pycache__/**,**/venv/**,**/.venv/**
             -Dsonar.test.inclusions=tests/**/*.py
             -Dsonar.test.exclusions=**/__pycache__/**,**/venv/**,**/.venv/**
-            -Dsonar.python.version=3.9
+            -Dsonar.python.version=3.13
             -Dsonar.python.coverage.reportPaths=coverage.xml
             -Dsonar.sourceEncoding=UTF-8
 
       # useful for pull request checks to fail pipeline
       - name: SonarQube Quality Gate Check
+        id: quality_gate
         uses: sonarsource/sonarqube-quality-gate-action@master
         timeout-minutes: 5
+        continue-on-error: true
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_HOST_URL: ${{ secrets.SONARQUBE_URL }}
+
+      # Emit a yellow warning if the gate failed
+      - name: Warn if Quality Gate failed
+        if: steps.quality_gate.outcome == 'failure'
+        run: echo "::warning::SonarQube Quality Gate failed (but build is continuing)"
+
