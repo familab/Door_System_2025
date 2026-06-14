@@ -30,6 +30,7 @@ Credentials:
 - [Data Schema](docs/data-schema.md)
 - [Metrics](docs/metrics.md)
 - [Single Sign-On Setup](docs/single_sign_on.md)
+- [Deploy Guide](docs/deploy.md)
 
 
 ## Table of Contents
@@ -51,7 +52,6 @@ Credentials:
 - [Systemd Watchdog](#systemd-watchdog)
 - [Testing](#testing)
 - [Continuous Integration](#continuous-integration)
-- [Deployment (production)](#deployment-production)
 - [Additional Documentation](#additional-documentation)
 - [Configuration Options](#configuration-options)
 - [Architecture](#architecture)
@@ -123,6 +123,12 @@ Then install the project dependencies:
 pip install -r requirements.txt
 ```
 
+For local development (includes test tools):
+
+```bash
+pip install -r requirements.dev.txt
+```
+
 **If SSH connection times out during installation** (common on slower Pi models), run installation in background:
 
 ```bash
@@ -160,6 +166,31 @@ Edit `config.py` or set environment variables:
 export DOOR_HEALTH_PORT=3667
 export DOOR_HEALTH_USERNAME=admin
 export DOOR_HEALTH_PASSWORD=changeme
+```
+
+### Local Windows Setup for Python 3.13
+
+Use [Chocolatey](https://chocolatey.org/) to install Python 3.13:
+
+```powershell
+choco install python --version=3.13 -y
+```
+
+Verify the installation:
+
+```powershell
+python --version
+# Expected: Python 3.13.x
+```
+
+Recreate the virtual environment:
+
+```powershell
+python -m venv .venv
+py -V:3.13 -m venv .venv
+.venv\Scripts\activate
+pip install -r requirements.txt
+pip install -r requirements.dev.txt
 ```
 
 ### Development on Windows (no Raspberry Pi)
@@ -354,11 +385,7 @@ GitHub Actions automatically runs tests on push/PR to main/develop branches.
 
 See `.github/workflows/tests.yml` for CI configuration.
 
-Tests run on Python 3.9, 3.10, and 3.11.
-
-## Deployment (production)
-
-This repository includes a deployment workflow that builds a ZIP artifact and deploys it to a self-hosted production agent.
+Tests run on Python 3.13.
 
 ## Additional Documentation
 
@@ -367,31 +394,6 @@ This repository includes a deployment workflow that builds a ZIP artifact and de
 - [Data Schema](data-schema.md) — Google Sheets structure and expected formats (badge list and access log)
 - [Metrics](docs/metrics.md) — SQLite ingestion/query design and metrics API behavior
 - **API Docs** (`/docs`) — Interactive Swagger UI for exploring the HTTP API (OpenAPI JSON at `/openapi.json`)
-
-
-
-Required repository secrets (set under Settings → Secrets):
-
-- `CREDS_JSON` — (optional) the full Google Service Account JSON content (will be written to `creds.json` on the target host)
-- `DOOR_HEALTH_USERNAME` — username for the health page (recommended to change from `admin`)
-- `DOOR_HEALTH_PASSWORD` — password for the health page (set a strong value)
-- `DOOR_HEALTH_PORT` — (optional) port for the health server (default 8080)
-- `DEPLOY_DIR` — (optional) directory on the target host to deploy files (default: `/opt/door`)
-
-Protection and approvals:
-
-- The `deploy` job targets the `production` environment. Configure environment protection rules in GitHub to require approvals or checks before the workflow can proceed.
-
-Behavior of the deployment workflow:
-
-- Job 1 (`build_package`) creates a ZIP containing `README.md`, all `*.md` files, `*.service` files, `version*.txt`, `main.py`, the `src_service/` package, and `requirements.txt`.
-- Job 2 (`deploy`) runs on a **self-hosted** runner (an agent you own), downloads the ZIP, extracts it to `DEPLOY_DIR` (default `/opt/door`), writes the `creds.json` file if `CREDS_JSON` is provided, creates a systemd drop-in to export `DOOR_CREDS_FILE`, `DOOR_HEALTH_USERNAME`, and `DOOR_HEALTH_PASSWORD` into the service environment, then restarts `door-app.service`.
-
-Notes & recommended follow-ups:
-
-- Secrets are never committed to the repository; they are provided to the workflow via GitHub Secrets.
-- The deployment writes the service account JSON to `creds.json` and sets `DOOR_CREDS_FILE` to point there. The service will read the config at startup.
-- You may prefer to manage secrets via a secret management system or encrypted files on the target host.
 
 ## Configuration Options
 

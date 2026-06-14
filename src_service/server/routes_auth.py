@@ -1,7 +1,7 @@
 """Login/logout routes with basic auth and Google OAuth2."""
 import html as html_stdlib
 import os
-from urllib.parse import parse_qs, quote
+from urllib.parse import parse_qs, quote, urlparse, urlunparse
 
 from ..config import config
 from ..logging_utils import get_logger
@@ -14,6 +14,8 @@ from .auth import (
     is_email_whitelisted,
     save_oauth_state,
     pop_oauth_state,
+    record_auth_failure,
+    is_throttled,
 )
 
 # Allow OAuth over HTTP for local development/tunnels (configure via GOOGLE_OAUTH_ALLOW_HTTP)
@@ -47,7 +49,7 @@ def _normalize_scopes(value) -> list:
     return [p.strip() for p in raw.replace(",", " ").split() if p.strip()]
 
 
-def _login_page_html(error_message: str = "", next_path: str = "/admin") -> str:
+def _login_page_html(error_message: str = "", next_path: str = "/admin", username: str = "", password: str = "") -> str:
     error_html = ""
     if error_message:
         safe_error = html_stdlib.escape(error_message)
@@ -88,9 +90,9 @@ def _login_page_html(error_message: str = "", next_path: str = "/admin") -> str:
     <form method=\"POST\" action=\"/login\">
       <input type=\"hidden\" name=\"next\" value=\"{html_stdlib.escape(next_path)}\">
       <label>Username</label>
-      <input name=\"username\" autocomplete=\"username\" required />
+      <input name="username" autocomplete="username" required value="{html_stdlib.escape(username)}" />
       <label>Password</label>
-      <input name=\"password\" type=\"password\" autocomplete=\"current-password\" required />
+      <input name="password" type="password" autocomplete="current-password" required value="{html_stdlib.escape(password)}" />
       <button class=\"btn\" type=\"submit\">Sign in</button>
     </form>
     <div style=\"margin-top:14px;\">{google_button}</div>
@@ -99,9 +101,9 @@ def _login_page_html(error_message: str = "", next_path: str = "/admin") -> str:
 </html>"""
 
 
-def send_login_page(handler, raw_query: str, error_message: str = "") -> None:
+def send_login_page(handler, raw_query: str, error_message: str = "", username: str = "", password: str = "") -> None:
     next_path = _get_next_path(raw_query)
-    html = _login_page_html(error_message=error_message, next_path=next_path)
+    html = _login_page_html(error_message=error_message, next_path=next_path, username=username, password=password)
     handler.send_response(200)
     handler.send_header("Content-type", "text/html; charset=utf-8")
     handler.end_headers()
@@ -119,6 +121,10 @@ def handle_login_post(handler) -> None:
     if not next_path.startswith("/") or next_path.startswith("//"):
         next_path = "/admin"
 
+    if is_throttled(handler):
+        send_login_page(handler, raw_query=f"next={next_path}", error_message="Too many failed attempts. Please wait before trying again.", username=username, password=password)
+        return
+
     if username == config.get("HEALTH_SERVER_USERNAME") and password == config.get(
         "HEALTH_SERVER_PASSWORD"
     ):
@@ -129,7 +135,8 @@ def handle_login_post(handler) -> None:
         handler.end_headers()
         return
 
-    send_login_page(handler, raw_query=f"next={next_path}", error_message="Invalid username or password")
+    record_auth_failure(handler)
+    send_login_page(handler, raw_query=f"next={next_path}", error_message="Invalid username or password", username=username)
 
 
 def handle_logout(handler) -> None:
@@ -284,9 +291,21 @@ def handle_google_callback(handler, raw_query: str) -> None:
     flow.redirect_uri = redirect_uri
 
     try:
-        full_url = handler.path
-        if not full_url.startswith("http"):
-            full_url = f"{scheme}://{host}{handler.path}"
+        # Build the authorization_response URL. When behind a reverse proxy or tunnel
+        # (e.g. Cloudflare) the internal request arrives over HTTP, but the callback
+        # URL that Google redirected to used HTTPS (matching redirect_uri).  Reconstruct
+        # the URL from redirect_uri's scheme/host/path so oauthlib's HTTPS check passes.
+        raw_path = handler.path
+        qs = raw_path.split("?", 1)[1] if "?" in raw_path else raw_query or ""
+        parsed_redirect = urlparse(redirect_uri)
+        full_url = urlunparse((
+            parsed_redirect.scheme,
+            parsed_redirect.netloc,
+            parsed_redirect.path,
+            "",
+            qs,
+            "",
+        ))
         flow.fetch_token(authorization_response=full_url)
         credentials = flow.credentials
         info = id_token.verify_oauth2_token(credentials.id_token, Request(), client_id)

@@ -9,6 +9,7 @@ from src_service.server.auth import (
     check_basic_auth,
     get_current_user,
     _SESSION_STORE,
+    _AUTH_THROTTLE_STORE,
 )
 
 
@@ -125,6 +126,7 @@ class TestBasicAuth(unittest.TestCase):
     """Test cases for HTTP Basic Auth."""
 
     def setUp(self):
+        _AUTH_THROTTLE_STORE.clear()
         self.test_config = {
             "HEALTH_SERVER_USERNAME": "testuser",
             "HEALTH_SERVER_PASSWORD": "testpass",
@@ -133,6 +135,7 @@ class TestBasicAuth(unittest.TestCase):
         self.patcher.start()
 
     def tearDown(self):
+        _AUTH_THROTTLE_STORE.clear()
         self.patcher.stop()
 
     def test_valid_basic_auth(self):
@@ -175,6 +178,7 @@ class TestGetCurrentUser(unittest.TestCase):
 
     def setUp(self):
         _SESSION_STORE.clear()
+        _AUTH_THROTTLE_STORE.clear()
         self.test_config = {
             "HEALTH_SERVER_USERNAME": "testuser",
             "HEALTH_SERVER_PASSWORD": "testpass",
@@ -184,6 +188,7 @@ class TestGetCurrentUser(unittest.TestCase):
 
     def tearDown(self):
         _SESSION_STORE.clear()
+        _AUTH_THROTTLE_STORE.clear()
         self.patcher.stop()
 
     def test_get_current_user_with_session(self):
