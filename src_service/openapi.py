@@ -114,6 +114,34 @@ def get_openapi_spec(host: Optional[str] = None) -> Dict:
                     "security": [{"basicAuth": []}]
                 }
             },
+            "/api/metrics/info": {
+                "get": {
+                    "summary": "Get metrics availability info",
+                    "description": "Returns metadata about available metrics data, including the earliest available date. Requires Basic Auth.",
+                    "responses": {
+                        "200": {
+                            "description": "Metrics info (JSON)",
+                            "content": {
+                                "application/json": {
+                                    "schema": {
+                                        "type": "object",
+                                        "properties": {
+                                            "earliest_date": {
+                                                "type": "string",
+                                                "format": "date",
+                                                "nullable": True,
+                                                "description": "Earliest available metrics date (YYYY-MM-01), or null if no data"
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        "401": {"description": "Unauthorized"}
+                    },
+                    "security": [{"basicAuth": []}]
+                }
+            },
             "/api/version": {
                 "get": {
                     "summary": "Get application version",
