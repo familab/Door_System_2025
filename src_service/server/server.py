@@ -226,6 +226,12 @@ class RequestHandler(BaseHTTPRequestHandler):
             if routes_metrics.handle_unified_metrics_api(self, raw_query):
                 return
 
+        if path == "/api/metrics/info":
+            if not self._require_api_auth():
+                return
+            if routes_metrics.handle_metrics_info_api(self):
+                return
+
         # Authenticated API: return current application version
         if path == "/api/version":
             if not self._require_api_auth():

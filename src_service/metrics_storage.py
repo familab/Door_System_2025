@@ -387,6 +387,27 @@ def query_month_events(month_key: str) -> List[Dict[str, Optional[str]]]:
         conn.close()
 
 
+def get_earliest_available_month(base_path: Optional[str] = None) -> Optional[str]:
+    """Return the earliest available month key (YYYY-MM) by scanning db files, or None."""
+    base = base_path or get_metrics_base_path()
+    if not os.path.isdir(base):
+        return None
+    earliest = None
+    for year_dir in sorted(os.listdir(base)):
+        year_path = os.path.join(base, year_dir)
+        if not os.path.isdir(year_path):
+            continue
+        for fname in sorted(os.listdir(year_path)):
+            if fname.endswith(".db") and re.match(r'^\d{4}-\d{2}\.db$', fname):
+                month_key = fname[:-3]
+                if earliest is None or month_key < earliest:
+                    earliest = month_key
+                break  # sorted — first entry is earliest in this year
+        if earliest is not None:
+            break  # found earliest year's first month
+    return earliest
+
+
 def month_events_to_csv(events: Sequence[Dict[str, Optional[str]]]) -> str:
     """Serialize event records to CSV."""
     output = StringIO()

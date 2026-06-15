@@ -4,7 +4,7 @@ import math
 from datetime import date, datetime
 from urllib.parse import parse_qs
 
-from ..metrics_storage import query_events_range, month_events_to_csv
+from ..metrics_storage import query_events_range, month_events_to_csv, get_earliest_available_month
 from .state import APPLICATION_JSON, check_rate_limit_metrics_reload, get_seconds_until_next_metrics_reload
 from ..logging_utils import get_logger
 from .auth import login_required, get_current_user
@@ -208,6 +208,7 @@ def send_metrics_page(handler, raw_query: str):
     <label>Start: <input type="date" id="startDate" value="{start_date.isoformat()}"></label>
     <label>End: <input type="date" id="endDate" value="{end_date.isoformat()}"></label>
     <button id="btnLoad">Load/Refresh</button>
+    <button id="btnAllEvents">All Events</button>
     <button id="btnClearCache">Clear Cache</button>
     <button id="btnExportCSV">Export CSV</button>
     <button id="btnExportAlerts">Export Alerts CSV</button>
@@ -487,10 +488,8 @@ async function loadMetrics() {{
   updateStatus('Loading...', 'loading');
 
   try {{
-    debugger
     // Try cache first
     let events = await getCached(start, end);
-    debugger;
     // Try to use cached segments covering requested range
     const cachedSegments = await getCachedSegments(start, end);
     if (cachedSegments && cachedSegments.length) {{
@@ -1594,6 +1593,24 @@ function exportCSV() {{
   db = await openDB();
   document.getElementById('btnLoad').addEventListener('click', loadMetrics);
   document.getElementById('btnClearCache').addEventListener('click', clearCache);
+
+  const btnAllEvents = document.getElementById('btnAllEvents');
+  if (btnAllEvents) {{
+    btnAllEvents.addEventListener('click', async () => {{
+      try {{
+        const res = await fetch('/api/metrics/info', {{ credentials: 'same-origin' }});
+        const info = await res.json();
+        if (info.earliest_date) {{
+          document.getElementById('startDate').value = info.earliest_date;
+          await loadMetrics();
+        }} else {{
+          updateStatus('No historical data found', 'error');
+        }}
+      }} catch (e) {{
+        updateStatus('Error fetching earliest date: ' + e.message, 'error');
+      }}
+    }});
+  }}
   document.getElementById('btnExportCSV').addEventListener('click', exportCSV);
   const btnExportAlerts = document.getElementById('btnExportAlerts');
   if (btnExportAlerts) {{ btnExportAlerts.addEventListener('click', () => exportTooLongCSV(latestEvents)); }}
@@ -1675,6 +1692,14 @@ function exportCSV() {{
     handler.send_header("Content-type", "text/html; charset=utf-8")
     handler.end_headers()
     handler.wfile.write(html.encode("utf-8"))
+
+
+def handle_metrics_info_api(handler) -> bool:
+    """GET /api/metrics/info - returns metadata about available metrics (e.g. earliest date)."""
+    earliest = get_earliest_available_month()
+    earliest_date = (earliest + "-01") if earliest else None
+    _write_json(handler, {"earliest_date": earliest_date})
+    return True
 
 
 def handle_metrics_reload_post(handler) -> bool:
