@@ -772,7 +772,7 @@ class TestHealthServer(unittest.TestCase):
         self.config_patcher.stop()
         self.logger_patcher.stop()
 
-    @patch("src_service.server.server.HTTPServer")
+    @patch("src_service.server.server.ThreadingHTTPServer")
     def test_server_start(self, mock_http_server):
         mock_http_server.return_value.serve_forever = lambda: time.sleep(0.1)
         srv = server.HealthServer(port=8888)
@@ -789,7 +789,7 @@ class TestHealthServer(unittest.TestCase):
         srv2 = server.HealthServer()
         self.assertEqual(srv2.port, 8888)
 
-    @patch("src_service.server.server.HTTPServer")
+    @patch("src_service.server.server.ThreadingHTTPServer")
     def test_global_start_stop(self, mock_http_server):
         mock_http_server.return_value.serve_forever = lambda: time.sleep(0.1)
         import src_service.server.server as server_module
