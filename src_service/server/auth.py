@@ -250,20 +250,21 @@ def login_required(fn):
     return wrapper
 
 
-def save_oauth_state(state: str, next_path: str) -> None:
+def save_oauth_state(state: str, next_path: str, code_verifier: Optional[str] = None) -> None:
     _OAUTH_STATE_STORE[state] = {
         "next": _sanitize_next(next_path),
         "expires_at": _now_ts() + _OAUTH_STATE_TTL_SECONDS,
+        "code_verifier": code_verifier,
     }
 
 
-def pop_oauth_state(state: str) -> Optional[str]:
+def pop_oauth_state(state: str) -> Optional[tuple]:
     data = _OAUTH_STATE_STORE.pop(state, None)
     if not data:
         return None
     if data.get("expires_at", 0) <= _now_ts():
         return None
-    return data.get("next")
+    return data.get("next"), data.get("code_verifier")
 
 
 def _normalize_list(value) -> list:
