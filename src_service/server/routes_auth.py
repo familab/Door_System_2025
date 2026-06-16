@@ -238,7 +238,11 @@ def handle_google_login_start(handler, raw_query: str) -> None:
         prompt="select_account",
     )
 
-    save_oauth_state(state, next_path)
+    # Capture PKCE code_verifier if the library auto-generated one (google-auth-oauthlib >= 1.4.0)
+    code_verifier = getattr(flow, "code_verifier", None)
+    if code_verifier is None:
+        code_verifier = getattr(getattr(flow, "oauth2session", None), "code_verifier", None)
+    save_oauth_state(state, next_path, code_verifier)
     handler.send_response(302)
     handler.send_header("Location", auth_url)
     handler.end_headers()
@@ -248,7 +252,9 @@ def handle_google_callback(handler, raw_query: str) -> None:
     query = parse_qs(raw_query or "", keep_blank_values=True)
     state = query.get("state", [""])[0]
     code = query.get("code", [""])[0]
-    next_path = pop_oauth_state(state) or "/admin"
+    state_data = pop_oauth_state(state)
+    next_path = (state_data[0] if state_data else None) or "/admin"
+    code_verifier = state_data[1] if state_data else None
 
     if not config.get("GOOGLE_OAUTH_ENABLED"):
         send_login_page(handler, raw_query=f"next={next_path}", error_message="Google OAuth is not enabled")
@@ -306,7 +312,10 @@ def handle_google_callback(handler, raw_query: str) -> None:
             qs,
             "",
         ))
-        flow.fetch_token(authorization_response=full_url)
+        fetch_kwargs = {"authorization_response": full_url}
+        if code_verifier:
+            fetch_kwargs["code_verifier"] = code_verifier
+        flow.fetch_token(**fetch_kwargs)
         credentials = flow.credentials
         info = id_token.verify_oauth2_token(credentials.id_token, Request(), client_id)
         email = info.get("email")
