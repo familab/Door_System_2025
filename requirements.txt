@@ -16,7 +16,7 @@ adafruit-circuitpython-pn532==2.4.8
 adafruit-blinka==8.47.0
 
 # Required by Adafruit libraries (transitive dependencies)
-adafruit-circuitpython-busdevice==5.2.16
+adafruit-circuitpython-busdevice==5.2.17
 Adafruit-PlatformDetect==3.88.0
 Adafruit-PureIO==1.1.11
 pyftdi==0.57.1
