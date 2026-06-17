@@ -3,7 +3,7 @@
 -r requirements.txt
 
 # Test reporting / runners
-unittest-xml-reporting>=3.0.0
+unittest-xml-reporting>=4.0.0
 pytest>=8.0.0
 
 # Test coverage
